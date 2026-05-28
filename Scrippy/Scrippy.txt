@@ -1,0 +1,222 @@
+﻿- Simple toy language
+- Dynamically typed
+- High-level
+- C inspired syntax
+- Class-based OOP
+
+TODO: 
+1. allow functions to continue after return?
+	func advance() {
+		return source[current];
+		current++;
+	}
+	- add finally block?
+
+2. add preprocessor directives?
+	- #config nestedComments true
+	- #config multilineStrings true
+	- #warning lskdfj
+	- #error slkdf
+	- #include sldkf
+	- #define lskje true
+	- #replace <> spaceship //replaces all instances of '<>' with 'spaceship' before lexing
+
+
+types: 
+1. bool
+2. double
+3. string
+4. list
+5. dict
+6. null
+
+
+
+Procedural: 
+1. Base types
+	- Boolean (bool)
+		- true or false
+		- only type for conditionals
+	- Number (double)
+		- merge int and float
+		- supports infinities and NaN
+	- String (string) 
+		- merged char and string
+		- converts to array of number for each character
+		- no need $ for interpolated/special strings, supports escape characters
+	- Array (array)
+		- can be heterogeneous, not fixed length
+		- can be produced by range operator
+	- Null (null)
+		- can be used in and/or (ternary logic)
+		- default for uninitalized?
+	- Object (object)
+		- can have fields and methods
+		- can be used as prototypes for other objects
+		- members accessed with dot notation not indexers
+		- functions as Dictionary<string, object>
+	- Function (func)
+		- can be declared in objects or globally
+		- can be called with arguments and return values
+	- Dictionary (dict)
+		- can have heterogeneous keys
+		- cannot have delegations unlike objects
+		- functions as Dictionary<object, object> not Dictionary<string, object>
+		- accessed using indexers, declared with sq. brackets like arrays
+		
+2. Variable declaration
+var a = 5;
+var b = "string";
+var c = true;
+var d = [5, "string", true];
+var e; 
+var f = func(x, y) {}
+var g = ["a": 5, 2: "b", "func1": func(x) {}]
+# destructuring assignments
+var [x, y] = [5, 10]; //for arrays
+var [x: "a", y : "b"] = ["a": 5, "b": 10]; //for dictionary
+
+When a variable is declared but not intialized -> reading/writing from it is runtime error
+-> uninitialized variables are not null
+
+3. Function declaration
+func f() {
+	print("bob");
+	return 0;
+}
+
+func f(x, y) {
+	print(x + y);
+}
+
+func f(ref x) {
+	x *= 2;
+	return x;
+}
+
+When a function has no return statement but is assigned to variable -> runtime error
+-> functions without return statement does not return null
+
+4. Conditionals
+if (x == 5)  {}
+elif (x == 6 && y == 7) {}
+elif (x <= 3 || y > 8) {}
+elif (x << -5 ~ -3)
+else {}
+
+switch (x) {
+	case (5) {}
+	case (< 7) {}
+	case (2 ~ 8) {}
+	case (string) {}
+	default {}
+}
+
+5. Loops
+for (var i = 0; i < 10; i++) {}
+while (i < 10) {}
+for (var i << 0 ~ 10 : 1) {} 
+for loops need : step portion, otherwise error
+~ only acts as continuous range, 1 ~ 4 = [1, 4)
+
+6. Operators
+	6.1 Arithmetic
+		- same: +x
+		- negate: -x
+		- increment: x++
+		- decrement: x--
+		
+		- add: x + y
+		- minus: x - y
+		- mult: x * y
+		- divide: x / y
+		- modulus: x % y
+		- power: x ^ y
+	6.2 Logical
+		- not: !x
+		- and: x && y
+		- or: x || y
+		- pattern and: x & y
+		- pattern or: x | y
+		- match: x :: y
+		- not match: x !: y
+	6.3 Comparison
+		- less: x < y
+		- more: x > y
+		- less or equals: x <= y
+		- less or more: x >= y
+		- equals: x == y
+		- not equals: x != y
+		- spaceship: x <> y
+		- ref equals: x := y
+	6.4 Assignment
+		- assignment: x = y
+		- add: x += y
+		- subtract: x -= y
+		- multiply: x *= y
+		- divide: x /= y
+		- power: x ^= y
+		- modulus: x %= y
+		- null assign: x ?= y
+		- and assign: x &= y //x = x && y
+		- or assign: x |= y //x = x || y
+
+	6.5 Others
+		- pipe: x >> y
+		- in: x << y
+		- range: x ~ y
+		- range with step: x ~ y : z
+		- ternary: x ? y : z
+		- elvis: x ?: y
+		- null check: x ?? y
+		- null access: x ?. y
+		- access: x . y
+		- comment: # x
+		- multiline comment: ## x y z ##
+
+Operators can be chained e.g.
+if (2 < x < 5) {}
+if (x < y > z) {}
+Similar to python, only pairs next to each other are evaluated
+
+
+
+Object - Oriented (Prototype): 
+
+1. Object declaration
+var a = obj {
+	var x = 5;
+	var y = "y string";
+
+	func f(p, q) {
+		return p + q;
+	}
+}
+var b = obj(a) {
+	var z = [1, 2, 3];
+
+	func g(r, s) {
+		return r * s;
+	}
+}
+
+2. Accessing fields/functions
+var c = a.x;
+var d = a.f(5, 6);
+var e = b.f("b", "ob");
+var f = b.y;
+
+3. Adding fields/functions
+var a.x2 = 10;
+var b.z2 = [1: 1, 2: 2, 3: 3];
+const b.x3 = obj {
+	var newObj = 5;
+}
+
+func b.h(r, s) {
+	return r ^ s;
+}
+
+Writing directly to uninitialized field will throw error
+
+Object - Oriented (Class): 
