@@ -62,12 +62,6 @@ namespace Scrippy
                 values[key] = value;
             }
         }
-        public bool ContainsKey(Value key)
-        {
-            if (!key.isHashable()) { throw new Exception($"Key {key} is not hashable, cannot be used as a dictionary key"); }
-            return values.ContainsKey(key);
-        }
-        public int Count { get { return values.Count; } }
 
         public static DictValue operator +(DictValue d1, DictValue d2) //merge fields
         {
@@ -109,12 +103,12 @@ namespace Scrippy
         public override bool Equals(Value other)
         {
             if (!(other is DictValue otherDict)) { return false; }
-            if (values.Count != otherDict.Count) { return false; }
+            if (values.Count != otherDict.values.Count) { return false; }
             bool equal = true;
             foreach (KeyValuePair<Value, Value> kvp in values)
             {
                 //if other dict doesnt contain key or value at that key not equal -> break, return false
-                if (!otherDict.ContainsKey(kvp.Key) || !kvp.Value.Equals(otherDict[kvp.Key])) { equal = false; break; }
+                if (!otherDict.values.ContainsKey(kvp.Key) || !kvp.Value.Equals(otherDict[kvp.Key])) { equal = false; break; }
             }
             return equal;
         }
@@ -136,7 +130,21 @@ namespace Scrippy
 
         public override int CompareTo(Value other)
         {
-            return base.CompareTo(other); //dict > all other types + all dicts equal
+            int otherType = base.CompareTo(other);
+            if (otherType != 0) { return otherType; } //arr > null/bool/num/str, arr < dict
+            DictValue a = (DictValue) other;
+            //sort by keys then compare lexicographically, then length
+            List<KeyValuePair<Value, Value>> orderedSelf = values.OrderBy(kvp => kvp.Key).ToList();
+            List<KeyValuePair<Value, Value>> orderedOther = a.values.OrderBy(kvp => kvp.Key).ToList();
+            for (int i = 0; i < orderedSelf.Count && i < orderedOther.Count; i++)
+            {
+                int compareKey = orderedSelf[i].Key.CompareTo(orderedOther[i].Key);
+                if (compareKey != 0) { return compareKey; }
+
+                int compareValue = orderedSelf[i].Value.CompareTo(orderedOther[i].Value);
+                if (compareValue != 0) { return compareValue; }
+            }
+            return (orderedSelf.Count.CompareTo(orderedOther.Count)); //if all keys and values equal, shorter dict is less
         }
     }
 
@@ -161,7 +169,6 @@ namespace Scrippy
                 else { throw new Exception($"Index {index} out of bounds for array of length {values.Count}"); }
             }
         }
-        public int Count { get { return values.Count; } }
 
         public static ArrValue operator +(ArrValue a, Value b)
         {
@@ -206,7 +213,7 @@ namespace Scrippy
         public override bool Equals(Value other)
         {
             if (!(other is ArrValue otherArr)) { return false; }
-            if (values.Count != otherArr.Count) { return false; }
+            if (values.Count != otherArr.values.Count) { return false; }
             bool equal = true;
             for (int i = 0; i < values.Count; i++) { if (!values[i].Equals(otherArr[i])) { equal = false; break; } }
             return equal;
@@ -220,19 +227,17 @@ namespace Scrippy
         }
 
         public override string getTypeName() { return "array"; }
-
         public override int CompareTo(Value other)
         {
             int otherType = base.CompareTo(other);
             if (otherType != 0) { return otherType; } //arr > null/bool/num/str, arr < dict
             ArrValue a = (ArrValue) other;
-            if (a.Count != values.Count) { return values.Count.CompareTo(a.Count); }
-            for(int i = 0; i < values.Count; i++)
+            for(int i = 0; i < values.Count && i < a.values.Count; i++)
             {
                 int compare = values[i].CompareTo(a[i]);
                 if (compare != 0) { return compare; }
             }
-            return 0;
+            return(values.Count.CompareTo(a.values.Count)); //if all values equal, shorter array is less
         }
     }
 
@@ -248,9 +253,6 @@ namespace Scrippy
         public static explicit operator bool(BoolValue b) { return b.value; }
         public static explicit operator BoolValue(bool b) { return b ? trueInstance : falseInstance; }
         public static BoolValue operator !(BoolValue b) { return b.value ? falseInstance : trueInstance; }
-
-        public static BoolValue operator &(BoolValue b1, BoolValue b2) { return (BoolValue) (b1.value && b2.value); }
-        public static BoolValue operator |(BoolValue b1, BoolValue b2) { return (BoolValue) (b1.value || b2.value); }
         #endregion
 
         public override string ToString() { return value ? "true" : "false"; } //not uppercase like c#
@@ -266,9 +268,11 @@ namespace Scrippy
 
         public override string getTypeName() { return "boolean"; }
 
-        public override int CompareTo(Value other)
+        public override int CompareTo(Value other) //true > false
         {
-            return base.CompareTo(other); //bool > null, bool < num/str/arr/dict, all bools equal
+            int otherType = base.CompareTo(other);
+            if (otherType != 0) { return otherType; } //num > null/bool, num < str/arr/dict
+            return value.CompareTo(((BoolValue) other).value);
         }
     }
 
@@ -351,10 +355,8 @@ namespace Scrippy
         {
             int otherType = base.CompareTo(other);
             if (otherType != 0) { return otherType; } //str > null/bool/num, str < arr/dict
-            StrValue s = (StrValue) other;
-            //c# compare letter by letter, then length -> I do length then letter
-            if (value.Length != s.value.Length) { return value.Length.CompareTo(s.value.Length); }
-            return value.CompareTo(s.value);
+            //lexicographic then length
+            return value.CompareTo(((StrValue) other).value);
         }
     }
 
@@ -368,7 +370,7 @@ namespace Scrippy
         public override int GetHashCode() { return 0; }
         public override bool isHashable() { return true; }
         public override string getTypeName() { return "null"; }
-        public override int CompareTo(Value other)
+        public override int CompareTo(Value other) //compring nulls not always false like other langauges
         {
             return base.CompareTo(other); //null < all other types, all nulls equal
         }

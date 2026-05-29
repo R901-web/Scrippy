@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Security.AccessControl;
 
 namespace Scrippy
 {
@@ -97,6 +98,7 @@ namespace Scrippy
                     if (left is NumValue nl && right is NumValue nr) { return nl + nr; }
                     if (left is StrValue sl && right is StrValue sr) { return sl + sr; }
                     if (left is DictValue dl && right is DictValue dr) { return dl + dr; }
+                    if (right is NullValue) { return left; }
                     throw error(binary, $"Unsupported operand for addition: {left.getTypeName()}, {right.getTypeName()}");
                 case TokenType.Minus:
                     if (left is NumValue nl2 && right is NumValue nr2) { return nl2 - nr2; }
@@ -108,6 +110,7 @@ namespace Scrippy
                     if (left is ArrValue al3) { return al3 * nr3; }
                     if (left is NumValue nl3) { return nl3 * nr3; }
                     if (left is StrValue s) { return s * nr3; }
+                    if (left is NullValue) { return NullValue.instance; }
                     throw error(binary, $"Unsupported operand for multiplication: {left.getTypeName()}, {right.getTypeName()}");
                 case TokenType.Div:
                     if (left is NumValue nl4 && right is NumValue nr4) { return nl4 / nr4; }
@@ -115,7 +118,7 @@ namespace Scrippy
                 case TokenType.Mod:
                     if (left is NumValue nl5 && right is NumValue nr5) { return nl5 % nr5; }
                     throw error(binary, $"Unsupported operand for division: {left.getTypeName()}, {right.getTypeName()}");
-                case TokenType.Power:
+                case TokenType.Power: //returns NaN when 0^0, complex nums, etc.
                     if (left is NumValue nl6 && right is NumValue nr6) { return (NumValue) Math.Pow((double) nl6, (double) nr6); }
                     throw error(binary, $"Unsupported operand for exponentiation: {left.getTypeName()}, {right.getTypeName()}");
             }
@@ -161,7 +164,6 @@ namespace Scrippy
 
             return null;
         }
-#warning fininsh later
         private Value evaluateLogical(BinaryExpr binary) //lazy
         {
             Value left = evaluate(binary.left);
@@ -175,8 +177,12 @@ namespace Scrippy
                     Value ra = evaluate(binary.right);
                     if (!(ra is BoolValue || ra is NullValue)) { throw error(binary.right, $"Unsupported operand for logical and: {ra.getTypeName()}"); }
                     //left = true/null, right = null/false/true
-                    break;
-
+                    if (left is BoolValue) { return ra; } //left must be true -> t&t = t, t&f = f, t&n = n
+                    else //left = null -> n&t = n, n&f = f, n&n = n
+                    {
+                        if (ra.Equals(BoolValue.falseInstance)) { return BoolValue.falseInstance; }
+                        return NullValue.instance;
+                    }
                 case TokenType.Or:
                     if (!(left is BoolValue || left is NullValue)) { throw error(binary.left, $"Unsupported operand for logical or: {left.getTypeName()}"); }
                     if (left.Equals(BoolValue.trueInstance)) { return BoolValue.trueInstance; }
@@ -184,8 +190,12 @@ namespace Scrippy
                     Value ro = evaluate(binary.right);
                     if (!(ro is BoolValue || ro is NullValue)) { throw error(binary.right, $"Unsupported operand for logical or: {ro.getTypeName()}"); }
                     //left = false/null, right = null/false/true
-
-                    break;
+                    if (left is BoolValue) { return ro; } //left must be false -> f|f = f, f|t = t, f|n = n
+                    else //left = null -> n|f = n, n|t = t, n|n = n
+                    {
+                        if (ro.Equals(BoolValue.trueInstance)) { return BoolValue.trueInstance; }
+                        return NullValue.instance;
+                    }
             }
 
             return null;
@@ -239,8 +249,7 @@ namespace Scrippy
             Value condition = evaluate(ternary.left);
             if (main.type == TokenType.TernCond && side.type == TokenType.Colon) //lazy
             {
-                if (condition is BoolValue b) { return (bool) b ? evaluate(ternary.mid) : evaluate(ternary.right); }
-                throw error(ternary.left, $"Unsupported operand type for ternary condition: {condition.getTypeName()}");
+                return condition.isTruthy() ? evaluate(ternary.mid) : evaluate(ternary.right);
             }
             throw new NotImplementedException($"Add range pls");
         }

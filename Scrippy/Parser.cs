@@ -30,6 +30,11 @@ namespace Scrippy
      */
 
     /* GRAMMAR: 
+     * program -> statement* EOF
+     * 
+     * 
+     * 
+     * 
      * expression -> ternary
      * ternary (R) -> fallback ( "?" ternary ":" ternary )?
      * fallback (R) -> equality ( ( "??" | "?:" ) fallback )?

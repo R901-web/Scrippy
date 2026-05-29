@@ -4,6 +4,14 @@
 - C inspired syntax
 - Class-based OOP
 
+GOAL:
+- Small scripting language
+	- Not general purpose for large apps
+	- Prorotype-based OOP
+	- Dynamic typing
+- Convenient features, less boilerplate
+
+
 TODO: 
 1. allow functions to continue after return?
 	func advance() {
@@ -24,11 +32,6 @@ TODO:
 3. add operator like -- for lists/strings
 	-> remove the last element
 
-4. more null operations?
-	- anything + null = unchanged
-	- null + anything = unchanged
-	- null * anything = null
-	- anytihng * null = null
 
 
 
