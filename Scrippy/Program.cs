@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -14,6 +15,7 @@ namespace Scrippy
         {
             Console.OutputEncoding = Encoding.UTF8; //goes to \uD7A3
             Console.InputEncoding = Encoding.UTF8;
+
 
             //get filename
             string filename;
@@ -49,7 +51,7 @@ namespace Scrippy
             Console.WriteLine();
 
             Parser p = new Parser(tokens);
-            IExpr expr = p.parseTokens();
+            Expr expr = p.parseTokens();
             if (DiagnosticHandler.hadError)
             {
                 DiagnosticHandler.reportAll();

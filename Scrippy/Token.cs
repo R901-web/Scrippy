@@ -1,5 +1,7 @@
 ﻿using System;
+using System.CodeDom.Compiler;
 using System.Collections.Generic;
+using System.Linq;
 using System.Linq.Expressions;
 
 namespace Scrippy
@@ -98,17 +100,24 @@ namespace Scrippy
         };
 
         public TokenType type { get; }
-        public string source { get; } //actual text of the token (e.g. "var", "+", "x")
+        public string[] lines { get; } //actual text of the token (e.g. "var", "+", "x")
+        public string source { get { return string.Join("\n", lines); } }
+
         public object literal { get; } //value of token (e.g. 4, true, "bob") -> null for tokens without value (e.g. var, func, +)
-        public int line { get; }
+        public int lineStart { get; }
+
+        public int lineEnd
+        {
+            get { return lineStart + source.Length - 1; }
+        }
 
         //for tokens with literal value
-        public Token(TokenType type, string source, object literal, int line)
+        public Token(TokenType type, string source, object literal, int lineStart)
         {
             this.type = type;
-            this.source = source;
+            this.lines = source.Split('\n');
             this.literal = literal;
-            this.line = line;
+            this.lineStart = lineStart;
         }
 
         //for tokens without literal value

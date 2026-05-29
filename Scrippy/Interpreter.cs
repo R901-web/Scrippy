@@ -1,16 +1,17 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices.ComTypes;
 using System.Security.AccessControl;
 using System.Security.Policy;
 
 namespace Scrippy
 {
-    internal class Interpreter
+    public class Interpreter
     {
-        public IExpr ast { get; }
+        public Expr ast { get; }
 
-        public Interpreter(IExpr ast)
+        public Interpreter(Expr ast)
         {
             this.ast = ast;
         }
@@ -26,7 +27,7 @@ namespace Scrippy
         }
 
         #region Evaluate
-        private object evaluate(IExpr node)
+        private object evaluate(Expr node)
         {
             switch (node)
             {
@@ -49,13 +50,11 @@ namespace Scrippy
             return null;
         }
 
+#warning dont immediately eval left & right -> pass node only -> can control whether lazy/eager
         private object evaluateBinary(BinaryExpr node)
         {
             object left = evaluate(node.left);
             object right = evaluate(node.right); //be eager not lazy
-
-            Type leftT = left?.GetType();
-            Type rightT = right?.GetType();
 
             switch (node.op.type)
             {
@@ -66,36 +65,36 @@ namespace Scrippy
                 case TokenType.Mult:
                 case TokenType.Mod:
                 case TokenType.Power:
-                    return evaluateArithmetic(left, right, node.op);
+                    return evaluateArithmetic(left, right, node);
                 //Comparison
                 case TokenType.Less:
                 case TokenType.LessEQ:
                 case TokenType.More:
                 case TokenType.MoreEQ:
                 case TokenType.Spaceship:
-                    return evaluateComparison(left, right, node.op);
+                    return evaluateComparison(left, right, node);
                 //Equality
                 case TokenType.RefEQ:
                 case TokenType.Equal:
                 case TokenType.NotEQ:
-                    return evaluateEquality(left, right, node.op);
+                    return evaluateEquality(left, right, node);
                 //Logical
                 case TokenType.And:
                 case TokenType.Or:
-                    return evaluateLogical(left, right, node.op);
+                    return evaluateLogical(left, right, node);
                 //Fallback
                 case TokenType.Elvis:
                 case TokenType.NullCoalesce:
-                    return evaluateFallback(left, right, node.op);
+                    return evaluateFallback(left, right, node);
             }
             return null;
         }
 
         #region Binary Helpers
 
-        private object evaluateArithmetic(object left, object right, Token op)
+        private object evaluateArithmetic(object left, object right, BinaryExpr node)
         {
-            switch(op.type)
+            switch(node.op.type)
             {
                 case TokenType.Plus:
                     if (left is double && right is double) { return (double) left + (double) right; }
@@ -105,7 +104,7 @@ namespace Scrippy
                     if (left is Dictionary<object, object> dl && right is Dictionary<object, object> dr)
                     {
                         try { return dl.Concat(dr).ToDictionary(kvp => kvp.Key, kvp => kvp.Value); }
-                        catch (ArgumentException) { throw error(op, $"Duplicate key found when adding two dictionaries together: '{stringify(dl.Keys.Intersect(dr.Keys).First())}'"); }
+                        catch (ArgumentException) { throw error(node, $"Duplicate key found when adding two dictionaries together: '{stringify(dl.Keys.Intersect(dr.Keys).First())}'"); }
                     }
                     break;
 
@@ -114,7 +113,7 @@ namespace Scrippy
                     if (left is string sl && right is string sr) 
                     { 
                         if (sl.EndsWith(sr)) { return sl.Substring(0, sl.Length - sr.Length); }
-                        throw error(op, $"String {sl} does not end with {sr}");
+                        throw error(node, $"String {sl} does not end with {sr}");
                     }
                     break;
 
@@ -136,9 +135,9 @@ namespace Scrippy
 
             return null; //should be unreachable
         }
-        private object evaluateComparison(object left, object right, Token op)
+        private object evaluateComparison(object left, object right, BinaryExpr node)
         {
-            switch (op.type)
+            switch (node.op.type)
             {
 #warning add lists + dictionaries
                 case TokenType.Less:
@@ -170,38 +169,26 @@ namespace Scrippy
             return null; //should be unreachable
         }
 
-        private object evaluateEquality(object left, object right, Token op)
+        private object evaluateEquality(object left, object right, BinaryExpr node)
         {
-            switch (op.type)
+            switch (node.op.type)
             {
                 case TokenType.RefEQ: //for primitives is always true, others is reference equality
                     if (left == null && right == null) { return true; }
                     if (left is double && right is double) { return (double) left == (double) right; }
                     if (left is bool && right is bool) { return (bool) left == (bool) right; }
-                    return Object.ReferenceEquals(left, right);
+                    return ReferenceEquals(left, right);
                 case TokenType.Equal:
-                    if (left is double && right is double) { return (double) left == (double) right; }
-                    if (left is bool && right is bool) { return (bool) left == (bool) right; }
-                    if (left is string && right is string) { return (string) left == (string) right; }
-                    if (left is List<object> ll3 && right is List<object> lr3) { return deepEqual(ll3, lr3); }
-                    if (left is Dictionary<object, object> dl3 && right is Dictionary<object, object> dr3) { return deepEqual(dl3, dr3); }
-                    if (left == null && right == null) { return true; }
-                    return false;
+                    return deepValueEqual(left, right);
                 case TokenType.NotEQ:
-                    if (left is double && right is double) { return (double) left != (double) right; }
-                    if (left is bool && right is bool) { return (bool) left != (bool) right; }
-                    if (left is string && right is string) { return (string) left != (string) right; }
-                    if (left is List<object> ll4 && right is List<object> lr4) { return !deepEqual(ll4, lr4); }
-                    if (left is Dictionary<object, object> dl4 && right is Dictionary<object, object> dr4) { return !deepEqual(dl4, dr4); }
-                    if (left == null && right == null) { return false; }
-                    return true;
+                    return !deepValueEqual(left, right);
             }
             return null; //should be unreachable
         }
 
-        private object evaluateLogical(object left, object right, Token op)
+        private object evaluateLogical(object left, object right, BinaryExpr node)
         {
-            switch (op.type)
+            switch (node.op.type)
             {
                 case TokenType.And:
                     return (bool?) left & (bool?) right; //yay 3-value logic
@@ -211,9 +198,9 @@ namespace Scrippy
             return null; //should be unreachable
         }
 
-        private object evaluateFallback(object left, object right, Token op)
+        private object evaluateFallback(object left, object right, BinaryExpr node)
         {
-            switch(op.type)
+            switch(node.op.type)
             {
                 case TokenType.NullCoalesce:
                     return left ?? right;
@@ -248,13 +235,10 @@ namespace Scrippy
         private object evaluateTernary(TernaryExpr node)
         {
             object left = evaluate(node.left);
-            object mid = evaluate(node.mid);
-            object right = evaluate(node.right);
             if (node.mainOp.type == TokenType.TernCond && node.sideOp.type == TokenType.Colon)
             {
-                return (bool) left ? mid : right;
+                return (bool) left ? evaluate(node.mid) : evaluate(node.right); //lazy
             }
-#warning do range
 
             return null;
         }
@@ -262,7 +246,7 @@ namespace Scrippy
         private object evaluateArray(ArrayExpr node)
         {
             List<object> elements = new List<object>();
-            foreach (IExpr element in node.elements)
+            foreach (Expr element in node.elements)
             {
                 elements.Add(evaluate(element));
             }
@@ -272,14 +256,13 @@ namespace Scrippy
         private object evaluateDict(DictExpr node)
         {
             Dictionary<object, object> elements = new Dictionary<object, object>();
-            foreach (KeyValuePair<IExpr, IExpr> element in node.elements)
+            foreach (KeyValuePair<Expr, Expr> element in node.elements)
             {
                 object key = evaluate(element.Key);
                 object value = evaluate(element.Value);
                 if (elements.ContainsKey(key))
                 {
-#warning fix dictionary duplicate key
-                    //throw error($"Duplicate key found in dictionary literal: '{stringify(key)}'");
+                    throw error(element.Key, $"Duplicate key found in dictionary literal: '{stringify(key)}'");
                 }
                 elements[key] = value;
             }
@@ -314,6 +297,7 @@ namespace Scrippy
                     sd += (i < dict.Count - 1) ? ", " : "";
                 }
                 sd += "]";
+                if (sd == "[]") { sd = "[:]"; }
                 return sd;
             }
             return obj.ToString();
@@ -333,27 +317,78 @@ namespace Scrippy
         }
 
         //yay c# modulus is truncation not round down -> -7 % 3 = -1
+#warning for infinit -> modulus become NaN
         public static bool isInteger(object obj) { return obj is double d && d % 1 < 0.0000001 && d % 1 > -0.0000001; }
 
         public static bool isNonNegativeInt(object obj) { return isInteger(obj) && (double) obj >= 0; } //can also be 0
 
-#warning still shallow equlaity -> e.g. list of dicts/list of lists
+        public static bool deepValueEqual(object o1, object o2)
+        {
+            if (o1 == null) { return o2 == null; } //prevents NullReferenceException in GetType()
+            if (o2 == null) { return o1 == null; }
 
-        public static bool deepEqual(Dictionary<object, object> d1, Dictionary<object, object> d2)
-        {
-            return d1.SequenceEqual(d2);
+            if (o1.GetType() != o2.GetType()) { return false; }
+            if (o1 is string s) { return s == (string) o2; }
+            if (o1 is double d) { return d == (double) o2; }
+            if (o1 is bool b) { return b == (bool) o2; }
+
+            if (o1 is List<object> l1)
+            {
+                List<object> l2 = (List<object>) o2;
+                if (l1.Count != l2.Count) { return false; } //short circuit for optimize
+                bool equal = true;
+                for (int i = 0; i < l1.Count && equal; i++) //should work? -> break once equal is false
+                {
+                    equal = equal && deepValueEqual(l1[i], l2[i]);
+                }
+                return equal;
+            }
+
+            if (o1 is Dictionary<object, object> d1)
+            {
+                Dictionary<object, object> d2 = (Dictionary<object, object>) o2;
+                if (d1.Count !=  d2.Count) { return false; }
+                bool equal = true;
+                foreach (KeyValuePair<object, object> kvp in d1)
+                {
+#warning doesnt work for [[1, 2]: 5] == [[1, 2]: 5] ALSO LOOKUP WONT WORK BCS C# uses weird hash things
+                    object d2Val;
+                    try { d2Val = d2[kvp.Key]; }
+                    catch (KeyNotFoundException) { equal = false; break; }
+                    equal = equal && deepValueEqual(kvp.Value, d2Val);
+                }
+                return equal;
+            }
+
+            return Equals(o1, o2); //should be unreachable
         }
-        
-        public static bool deepEqual(List<object> l1, List<object> l2)
+
+        public static int compare(List<object> l1, List<object> l2)
         {
-            return l1.SequenceEqual(l2);
+            return 0;
         }
+
+        public static int compare(Dictionary<object, object> d1, Dictionary<object, object> d2)
+        {
+            return 0;
+        }
+
 
         #endregion
 
         #region Errors and Warnings
-        private Diagnostic error(Token t, string message) { return new Diagnostic(t.line, Program.lines[t.line - 1], message, DiagnosticLevel.ERROR); }
-        private Diagnostic warning(Token t, string message) { return new Diagnostic(t.line, Program.lines[t.line - 1], message, DiagnosticLevel.WARNING); }
+        private Diagnostic error(Expr e, string message)
+        {
+            string[] strings = new string[e.lineEnd - e.lineStart + 1];
+            for (int i = 0; i < strings.Length; i++) { strings[i] = Program.lines[e.lineStart + i - 1]; }
+            return new Diagnostic(e.lineStart, strings, message, DiagnosticLevel.ERROR);
+        }
+        private Diagnostic warning(Expr e, string message) 
+        {
+            string[] strings = new string[e.lineEnd - e.lineStart + 1];
+            for (int i = 0; i < strings.Length; i++) { strings[i] = Program.lines[e.lineStart + i - 1]; }
+            return new Diagnostic(e.lineStart, strings, message, DiagnosticLevel.WARNING);
+        }
         #endregion
     }
 }

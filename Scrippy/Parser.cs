@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Net.Http.Headers;
 
 
@@ -57,10 +58,10 @@ namespace Scrippy
             this.tokens = tokens;
         }
 
-        public IExpr parseTokens()
+        public Expr parseTokens()
         {
             try { return parseExpr(); }
-            catch (Diagnostic d) when (d.severity == DiagnosticLevel.ERROR) //only catch errors
+            catch (Diagnostic d) when (d.severity == DiagnosticLevel.ERROR) //only catch errors + warnings shouldnt be thrown
             { 
                 DiagnosticHandler.add(d);
                 return null;
@@ -68,191 +69,195 @@ namespace Scrippy
         }
 
         #region Parse
-        private IExpr parseExpr() { return parseTernary(); }
+        private Expr parseExpr() { return parseTernary(); }
 
-        private IExpr parseTernary()
+        private Expr parseTernary()
         {
-            IExpr expr = parseFallback();
+            Expr expr = parseFallback();
             if (match(TokenType.TernCond))
             {
                 Token mainOp = prev();
-                IExpr mid = parseTernary();
+                Expr mid = parseTernary();
                 if (!match(TokenType.Colon))
                 {
                     throw error(prev(), "Missing ':' in ternary expression");
                 }
                 Token sideOp = prev();
-                IExpr right = parseTernary();
+                Expr right = parseTernary();
                 expr = new TernaryExpr(expr, mainOp, mid, sideOp, right);
             }
             return expr;
         }
 
-        private IExpr parseFallback()
+        private Expr parseFallback()
         {
-            IExpr expr = parseLogical();
+            Expr expr = parseLogical();
             if (match(TokenType.NullCoalesce, TokenType.Elvis))
             {
                 Token op = prev();
-                IExpr right = parseFallback();
+                Expr right = parseFallback();
                 expr = new BinaryExpr(expr, op, right);
             }
             return expr;
         }
 
-#warning since and and or are same precedence -> add warning if no parentheses around them?
-        private IExpr parseLogical()
+        private Expr parseLogical()
         {
-            IExpr expr = parseEqual();
+            Expr expr = parseEqual();
             while (match(TokenType.And, TokenType.Or))
             {
                 Token op = prev();
-                IExpr right = parseEqual();
+                Expr right = parseEqual();
                 expr = new BinaryExpr(expr, op, right);
             }
             return expr;
         }
 
-        private IExpr parseEqual()
+        private Expr parseEqual()
         {
-            IExpr expr = parseCompare();
+            Expr expr = parseCompare();
             while (match(TokenType.NotEQ, TokenType.Equal, TokenType.RefEQ))
             {
                 Token op = prev();
-                IExpr right = parseCompare();
+                Expr right = parseCompare();
                 expr = new BinaryExpr(expr, op, right);
             }
             return expr;            
         }
 
-        private IExpr parseCompare()
+        private Expr parseCompare()
         {
-            IExpr expr = parseTerm();
+            Expr expr = parseTerm();
             while(match(TokenType.More, TokenType.MoreEQ, TokenType.Less, TokenType.LessEQ, TokenType.Spaceship))
             {
                 Token op = prev();
-                IExpr right = parseTerm();
+                Expr right = parseTerm();
                 expr = new BinaryExpr(expr, op, right);
             }
             return expr;
         }
 
-        private IExpr parseTerm()
+        private Expr parseTerm()
         {
-            IExpr expr = parseFactor();
+            Expr expr = parseFactor();
             while (match(TokenType.Plus, TokenType.Minus))
             {
                 Token op = prev();
-                IExpr right = parseFactor();
+                Expr right = parseFactor();
                 expr = new BinaryExpr(expr, op, right);
             }
             return expr;
         }
 
-        private IExpr parseFactor()
+        private Expr parseFactor()
         {
-            IExpr expr = parsePower();
+            Expr expr = parsePower();
             while (match(TokenType.Mult, TokenType.Div, TokenType.Mod))
             {
                 Token op = prev();
-                IExpr right = parsePower();
+                Expr right = parsePower();
                 expr = new BinaryExpr(expr, op, right);
             }
             return expr;
         }
         
-        private IExpr parsePower()
+        private Expr parsePower()
         {
-            IExpr expr = parseUnary();
+            Expr expr = parseUnary();
             if (match(TokenType.Power))
             {
                 Token op = prev();
-                IExpr right = parsePower();
+                Expr right = parsePower();
                 expr = new BinaryExpr(expr, op, right);
             }
             return expr;
         }
 
-        private IExpr parseUnary()
+        private Expr parseUnary()
         {
             if (match(TokenType.Not, TokenType.Minus, TokenType.Plus))
             {
                 Token op = prev();
-                IExpr right = parseUnary();
+                Expr right = parseUnary();
                 return new UnaryExpr(op, right);
             }
             return parsePrimary();
         }
 
-        private IExpr parsePrimary()
+        private Expr parsePrimary()
         {
-            if (match(TokenType.Null)) { return new LiteralExpr(null); }
+            if (match(TokenType.Null)) { return new LiteralExpr(null, prev().lineStart); }
 
             if (match(TokenType.NumberLiteral, TokenType.StringLiteral, TokenType.BooleanLiteral))
             {
-                return new LiteralExpr(prev().literal);
+                return new LiteralExpr(prev().literal, prev().lineStart, prev().lineEnd);
             }
 
             if (match(TokenType.LParen))
             {
-                IExpr expr = parseExpr();
+                int lineStart = prev().lineStart;
+                Expr expr = parseExpr();
                 if (!match(TokenType.RParen))
                 {
                     throw error(prev(), "Missing right parentheses ')' in grouping expression");
                 }
-                return new GroupingExpr(expr);
+                return new GroupingExpr(expr, lineStart, prev().lineEnd); //from left and right paren
             }
 
             if (match(TokenType.LSqBrac))
             {
-                if (match(TokenType.RSqBrac)) { return new LiteralExpr(new object[0]); } //empty array literal
-                IExpr first = parseExpr();
-                if (peek().type == TokenType.Comma || peek().type == TokenType.RSqBrac) { return parseArray(first); }
-                else if (peek().type == TokenType.Colon) { return parseDict(first); }
+                int lineStart = prev().lineStart;
+                //empty array: [], empty dictionary: [:]
+                if (match(TokenType.RSqBrac)) { return new LiteralExpr(new List<object>(), lineStart, prev().lineEnd); } 
+                if (match(TokenType.Colon) && match(TokenType.RSqBrac)) { return new LiteralExpr(new Dictionary<object, object>(), lineStart, prev().lineEnd); }
+                Expr first = parseExpr();
+                if (peek().type == TokenType.Comma || peek().type == TokenType.RSqBrac) { return parseArray(first, lineStart); }
+                else if (peek().type == TokenType.Colon) { return parseDict(first, lineStart); }
             }
 
             //if no check -> in empty file -> only EOF -> parser see -> throw error
-            if (!isEnd()) { throw error(peek(), $"Found unexpected token '{peek().source}'"); } 
+            if (!isEnd()) { throw error(peek(), $"Found unexpected token '{peek().source}'"); }
+#warning if missing sth. e.g. 1 ^ -> return null -> pushed up -> null ref exception
             return null;
         }
 
-        private IExpr parseArray(IExpr first)
+        private Expr parseArray(Expr first, int lineStart)
         {
-            List<IExpr> elements = new List<IExpr>();
+            List<Expr> elements = new List<Expr>();
             elements.Add(first);
             while (match(TokenType.Comma))
             {
-                IExpr next = parseExpr();
+                Expr next = parseExpr();
                 elements.Add(next);
             }
             if (!match(TokenType.RSqBrac))
             {
                 throw error(prev(), "Missing right square bracket ']' in array literal");
             }
-            return new ArrayExpr(elements);
+            return new ArrayExpr(elements, lineStart, prev().lineEnd); //from [ and ]
         }
 
-        private IExpr parseDict(IExpr first) //first is just a key
+        private Expr parseDict(Expr first, int lineStart) //first is just a key
         {
-            Dictionary<IExpr, IExpr> elements = new Dictionary<IExpr, IExpr>();
+            Dictionary<Expr, Expr> elements = new Dictionary<Expr, Expr>();
             match(TokenType.Colon);
-            IExpr value = parseExpr();
+            Expr value = parseExpr();
             elements.Add(first, value);
             while (match(TokenType.Comma))
             {
-                IExpr key = parseExpr();
+                Expr key = parseExpr();
                 if (!match(TokenType.Colon))
                 {
                     throw error(prev(), "Missing ':' in dictionary literal");
                 }
-                IExpr val = parseExpr();
+                Expr val = parseExpr();
                 elements.Add(key, val);
             }
             if (!match(TokenType.RSqBrac))
             {
                 throw error(prev(), "Missing right square bracket ']' in dictionary literal");
             }
-            return new DictExpr(elements);
+            return new DictExpr(elements, lineStart, prev().lineEnd);
         }
 
         #endregion
@@ -281,8 +286,18 @@ namespace Scrippy
         #region Warnings and Errors
         //for missing token -> use prev(), point to one before missing
         //for unexpected token -> use peek(), point to that token itself
-        private Diagnostic error(Token t, string message) { return new Diagnostic(t.line, Program.lines[t.line - 1], message, DiagnosticLevel.ERROR); }
-        private Diagnostic warning(Token t, string message) { return new Diagnostic(t.line, Program.lines[t.line - 1], message, DiagnosticLevel.WARNING); }
+        private Diagnostic error(Token t, string message) 
+        {
+            string[] strings = new string[t.lineEnd - t.lineStart + 1];
+            for (int i = 0; i < strings.Length; i++) { strings[i] = Program.lines[t.lineStart + i - 1]; }
+            return new Diagnostic(t.lineStart, strings, message, DiagnosticLevel.ERROR);
+        }
+        private Diagnostic warning(Token t, string message) 
+        {
+            string[] strings = new string[t.lineEnd - t.lineStart + 1];
+            for (int i = 0; i < strings.Length; i++) { strings[i] = Program.lines[t.lineStart + i - 1]; }
+            return new Diagnostic(t.lineStart, strings, message, DiagnosticLevel.WARNING);
+        }
         #endregion
     }
 }

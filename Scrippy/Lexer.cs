@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Scrippy
@@ -116,9 +117,11 @@ namespace Scrippy
                 //strings, numbers, identifiers
 #warning support string interpolation -> recursively create sublexers?
                 case '"':
-                    return lexString('"');
+                    if (peek() == '\'' && peekNext() != '"') { advance(); return lexRawString('"', '\''); } //avoid errors like "'"
+                    else { return lexString('"'); }
                 case '\'':
-                    return lexString('\'');
+                    if (peek() == '"' && peekNext() != '\'') { advance(); return lexRawString('\'', '"'); } //consume the 2nd quote
+                    else { return lexString('\''); }
                 case '_':
                     if (!validIdentify(peek())) { return token(TokenType.Underscore); }
                     else { return lexIdentifier('_'); }
@@ -355,6 +358,35 @@ namespace Scrippy
             match(quote); //consume closing brace
             return token(TokenType.StringLiteral, sb.ToString());
         }
+
+        /* ERRORS: 
+         * Unterminated string literal
+         */
+
+        private Token? lexRawString(char outer, char inner) //no escape sequences -> just write \ or ' or " -> have to support multiline
+        {
+            Debug.Assert((outer == '"' && inner == '\'') || (outer == '\'' && inner == '"'));
+
+            StringBuilder sb = new StringBuilder();
+
+            Func<char, char, bool> isCloseQuote = delegate(char c1, char c2) { return c1 == inner && c2 == outer; };
+
+            while (!isEnd() && !isCloseQuote(peek(), peekNext()))
+            {
+                if (peek() == '\n') { line++; }
+                sb.Append(advance());
+            }
+            if (isEnd())
+            {
+                error(startLine, line, "Unterminated string literal");
+                return null;
+            }
+            match(inner); //consume closing quotes
+            match(outer);
+
+            return token(TokenType.StringLiteral, sb.ToString());
+        }
+
         #endregion
 
         #region Comments
@@ -379,7 +411,7 @@ namespace Scrippy
         {
             string text = source.Substring(start, current - start);
             if (type == TokenType.EOF) { text = ""; }
-            return new Token(type, text, literal, line);
+            return new Token(type, text, literal, startLine);
         }
 
         //line starts at 1 -> have to subtract 1

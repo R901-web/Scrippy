@@ -3,7 +3,17 @@ using System.Collections.Generic;
 
 namespace Scrippy
 {
-    public interface IExpr { }
+    public abstract class Expr 
+    {
+        public int lineStart { get; }
+        public int lineEnd { get; }
+
+        protected Expr(int lineStart, int lineEnd)
+        {
+            this.lineStart = lineStart;
+            this.lineEnd = lineEnd;
+        }
+    }
 
     /* EXPRESSION TYPES
      * BinaryExpr
@@ -15,13 +25,12 @@ namespace Scrippy
      * DictionaryExpr
      */
 
-
-    public class BinaryExpr : IExpr
+    public class BinaryExpr : Expr
     {
-        public IExpr left { get; }
+        public Expr left { get; }
         public Token op { get; }
-        public IExpr right { get; }
-        public BinaryExpr(IExpr left, Token op, IExpr right)
+        public Expr right { get; }
+        public BinaryExpr(Expr left, Token op, Expr right) : base(left.lineStart, right.lineEnd)
         {
             this.left = left;
             this.op = op;
@@ -29,43 +38,44 @@ namespace Scrippy
         }
     }
 
-    public class GroupingExpr : IExpr
+    public class GroupingExpr : Expr
     {
-        public IExpr expr { get; }
-        public GroupingExpr(IExpr expr)
+        public Expr expr { get; }
+        public GroupingExpr(Expr expr, int lineStart, int lineEnd) : base(lineStart, lineEnd)
         {
             this.expr = expr;
         }
     }
 
-    public class LiteralExpr : IExpr
+    public class LiteralExpr : Expr
     {
         public object value { get; }
-        public LiteralExpr(object value)
+        public LiteralExpr(object value, int line) : this(value, line, line) { }
+        public LiteralExpr(object value, int lineStart, int lineEnd) : base(lineStart, lineEnd)
         {
             this.value = value;
         }
     }
 
-    public class UnaryExpr : IExpr
+    public class UnaryExpr : Expr
     {
         public Token op { get; }
-        public IExpr right { get; }
-        public UnaryExpr(Token op, IExpr right)
+        public Expr right { get; }
+        public UnaryExpr(Token op, Expr right) : base(op.lineStart, right.lineEnd)
         {
             this.op = op;
             this.right = right;
         }
     }
 
-    public class TernaryExpr : IExpr
+    public class TernaryExpr : Expr
     {
-        public IExpr left { get; }
+        public Expr left { get; }
         public Token mainOp { get; }
-        public IExpr mid { get; }
+        public Expr mid { get; }
         public Token sideOp { get; }
-        public IExpr right { get; }
-        public TernaryExpr(IExpr left, Token mainOp, IExpr mid, Token sideOp, IExpr right)
+        public Expr right { get; }
+        public TernaryExpr(Expr left, Token mainOp, Expr mid, Token sideOp, Expr right) : base(left.lineStart, right.lineEnd)
         {
             this.left = left;
             this.mainOp = mainOp;
@@ -75,23 +85,23 @@ namespace Scrippy
         }
     }
 
-    public class ArrayExpr : IExpr
+    public class ArrayExpr : Expr
     {
-        private List<IExpr> elem;
-        public IReadOnlyList<IExpr> elements { get { return elem; } }
+        private List<Expr> elem;
+        public IReadOnlyList<Expr> elements { get { return elem; } }
 
-        public ArrayExpr(List<IExpr> items)
+        public ArrayExpr(List<Expr> items, int lineStart, int lineEnd) : base(lineStart, lineEnd)
         {
             this.elem = items;
         }
     }
 
-    public class DictExpr : IExpr
+    public class DictExpr : Expr
     {
-        private Dictionary<IExpr, IExpr> elem;
-        public IReadOnlyDictionary<IExpr, IExpr> elements { get { return elem; } }
+        private Dictionary<Expr, Expr> elem;
+        public IReadOnlyDictionary<Expr, Expr> elements { get { return elem; } }
 
-        public DictExpr(Dictionary<IExpr, IExpr> items)
+        public DictExpr(Dictionary<Expr, Expr> items, int lineStart, int lineEnd) : base(lineStart, lineEnd)
         {
             this.elem = items;
         }

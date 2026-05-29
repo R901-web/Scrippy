@@ -11,10 +11,11 @@ namespace Scrippy
     {
         public static string stringify(Token t)
         {
-            return $"[Type: {t.type}, Source: {t.source}, Line: {t.line}, Literal: {t.literal}]";
+            if (t.lineStart == t.lineEnd) { return $"[Type: {t.type}, Source: {t.source}, Line: {t.lineStart}, Literal: {t.literal}]"; }
+            return $"[Type: {t.type}, Source: {t.source}, Lines: {t.lineStart} - {t.lineEnd}, Literal: {t.literal}]";
         }
 
-        public static string detailString(IExpr i, int indent = 0)
+        public static string detailString(Expr i, int indent = 0)
         {
             string ind = new string(' ', 4 * indent);
             switch (i)
@@ -53,13 +54,13 @@ namespace Scrippy
                 case ArrayExpr a:
                     string s1 = $"{ind}ArrayExpr\n" +
                         $"{ind}{{\n";
-                    foreach (IExpr e in a.elements) { s1 += detailString(e, indent + 1) + "\n"; }
+                    foreach (Expr e in a.elements) { s1 += detailString(e, indent + 1) + "\n"; }
                     s1 += $"{ind}}}";
                     return s1;
                 case DictExpr d:
                     string s2 = $"{ind}DictExpr\n" +
                         $"{ind}{{\n";
-                    foreach (KeyValuePair<IExpr, IExpr> kvp in d.elements) 
+                    foreach (KeyValuePair<Expr, Expr> kvp in d.elements) 
                     { 
                         s2 += $"{detailString(kvp.Key, indent + 1)}\n";
                         s2 += $"{detailString(kvp.Value, indent + 1)}\n";
@@ -72,7 +73,7 @@ namespace Scrippy
             return null;
         }
 
-        public static string easyString(IExpr obj)
+        public static string easyString(Expr obj)
         {
             if (obj == null) { return "null"; }
 
