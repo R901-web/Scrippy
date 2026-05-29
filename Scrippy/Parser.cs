@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Linq.Expressions;
-using System.Net.Http.Headers;
+﻿using System.Collections.Generic;
 
 
 namespace Scrippy
@@ -62,7 +58,7 @@ namespace Scrippy
         {
             try { return parseExpr(); }
             catch (Diagnostic d) when (d.severity == DiagnosticLevel.ERROR) //only catch errors + warnings shouldnt be thrown
-            { 
+            {
                 DiagnosticHandler.add(d);
                 return null;
             }
@@ -122,13 +118,13 @@ namespace Scrippy
                 Expr right = parseCompare();
                 expr = new BinaryExpr(expr, op, right);
             }
-            return expr;            
+            return expr;
         }
 
         private Expr parseCompare()
         {
             Expr expr = parseTerm();
-            while(match(TokenType.More, TokenType.MoreEQ, TokenType.Less, TokenType.LessEQ, TokenType.Spaceship))
+            while (match(TokenType.More, TokenType.MoreEQ, TokenType.Less, TokenType.LessEQ, TokenType.Spaceship))
             {
                 Token op = prev();
                 Expr right = parseTerm();
@@ -160,7 +156,7 @@ namespace Scrippy
             }
             return expr;
         }
-        
+
         private Expr parsePower()
         {
             Expr expr = parseUnary();
@@ -208,16 +204,19 @@ namespace Scrippy
             {
                 int lineStart = prev().lineStart;
                 //empty array: [], empty dictionary: [:]
-                if (match(TokenType.RSqBrac)) { return new LiteralExpr(new List<object>(), lineStart, prev().lineEnd); } 
-                if (match(TokenType.Colon) && match(TokenType.RSqBrac)) { return new LiteralExpr(new Dictionary<object, object>(), lineStart, prev().lineEnd); }
+                if (match(TokenType.RSqBrac)) { return new ArrayExpr(new List<Expr>(), lineStart, prev().lineEnd); }
+                if (match(TokenType.Colon) && match(TokenType.RSqBrac)) { return new DictExpr(new Dictionary<Expr, Expr>(), lineStart, prev().lineEnd); }
                 Expr first = parseExpr();
                 if (peek().type == TokenType.Comma || peek().type == TokenType.RSqBrac) { return parseArray(first, lineStart); }
                 else if (peek().type == TokenType.Colon) { return parseDict(first, lineStart); }
             }
 
             //if no check -> in empty file -> only EOF -> parser see -> throw error
-            if (!isEnd()) { throw error(peek(), $"Found unexpected token '{peek().source}'"); }
-#warning if missing sth. e.g. 1 ^ -> return null -> pushed up -> null ref exception
+            if (tokens.Length != 1) 
+            { 
+                if (peek().type != TokenType.EOF) { throw error(peek(), $"Found unexpected token '{peek().source}'"); }
+                throw error(prev(), "Missing token at end of expression");
+            }
             return null;
         }
 
@@ -286,13 +285,13 @@ namespace Scrippy
         #region Warnings and Errors
         //for missing token -> use prev(), point to one before missing
         //for unexpected token -> use peek(), point to that token itself
-        private Diagnostic error(Token t, string message) 
+        private Diagnostic error(Token t, string message)
         {
             string[] strings = new string[t.lineEnd - t.lineStart + 1];
             for (int i = 0; i < strings.Length; i++) { strings[i] = Program.lines[t.lineStart + i - 1]; }
             return new Diagnostic(t.lineStart, strings, message, DiagnosticLevel.ERROR);
         }
-        private Diagnostic warning(Token t, string message) 
+        private Diagnostic warning(Token t, string message)
         {
             string[] strings = new string[t.lineEnd - t.lineStart + 1];
             for (int i = 0; i < strings.Length; i++) { strings[i] = Program.lines[t.lineStart + i - 1]; }

@@ -1,9 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 
 namespace Scrippy
 {
-    public abstract class Expr 
+    public abstract class Expr
     {
         public int lineStart { get; }
         public int lineEnd { get; }

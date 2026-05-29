@@ -21,6 +21,16 @@ TODO:
 	- #define lskje true
 	- #replace <> spaceship //replaces all instances of '<>' with 'spaceship' before lexing
 
+3. add operator like -- for lists/strings
+	-> remove the last element
+
+4. more null operations?
+	- anything + null = unchanged
+	- null + anything = unchanged
+	- null * anything = null
+	- anytihng * null = null
+
+
 
 types: 
 1. bool

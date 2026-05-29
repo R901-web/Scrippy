@@ -1,6 +1,4 @@
-﻿using System;
-using System.CodeDom.Compiler;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 
 #if DEBUG
@@ -50,7 +48,7 @@ namespace Scrippy
                     $"{ind}    SideOp: {t.sideOp.source}\n" +
                     $"{detailString(t.right, indent + 1)}\n" +
                     $"{ind}}}";
-                    
+
                 case ArrayExpr a:
                     string s1 = $"{ind}ArrayExpr\n" +
                         $"{ind}{{\n";
@@ -60,15 +58,15 @@ namespace Scrippy
                 case DictExpr d:
                     string s2 = $"{ind}DictExpr\n" +
                         $"{ind}{{\n";
-                    foreach (KeyValuePair<Expr, Expr> kvp in d.elements) 
-                    { 
+                    foreach (KeyValuePair<Expr, Expr> kvp in d.elements)
+                    {
                         s2 += $"{detailString(kvp.Key, indent + 1)}\n";
                         s2 += $"{detailString(kvp.Value, indent + 1)}\n";
                         if (kvp.Key != d.elements.Keys.Last()) { s2 += "\n"; }
                     }
                     s2 += $"{ind}}}";
                     return s2;
-                    
+
             }
             return null;
         }
@@ -81,12 +79,12 @@ namespace Scrippy
             if (obj is UnaryExpr u) { return $"({u.op.source}{easyString(u.right)})"; }
             if (obj is BinaryExpr b) { return $"({easyString(b.left)} {b.op.source} {easyString(b.right)})"; }
             if (obj is TernaryExpr t) { return $"({easyString(t.left)} {t.mainOp.source} {easyString(t.mid)} {t.sideOp.source} {easyString(t.right)})"; }
-            if (obj is LiteralExpr le) 
-            { 
+            if (obj is LiteralExpr le)
+            {
                 if (le.value is string) { return $"\"{le.value}\""; } //add quotes so I know its string
-                return $"{le.value}"; 
+                return $"{le.value}";
             }
-            
+
             if (obj is ArrayExpr a)
             {
                 string s = "[";
@@ -109,7 +107,7 @@ namespace Scrippy
                 s += ']';
                 return s;
             }
-            
+
             return obj.ToString();
         }
     }

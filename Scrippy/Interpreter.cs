@@ -1,9 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.InteropServices.ComTypes;
-using System.Security.AccessControl;
-using System.Security.Policy;
+using System.Diagnostics;
 
 namespace Scrippy
 {
@@ -16,20 +13,19 @@ namespace Scrippy
             this.ast = ast;
         }
 
-        public object interpretAST()
+        public Value interpretAST()
         {
             try { return evaluate(ast); }
-            catch(Diagnostic d) when (d.severity == DiagnosticLevel.ERROR)
+            catch (Diagnostic d) when (d.severity == DiagnosticLevel.ERROR)
             {
                 DiagnosticHandler.add(d);
                 return null;
             }
         }
 
-        #region Evaluate
-        private object evaluate(Expr node)
+        private Value evaluate(Expr expr)
         {
-            switch (node)
+            switch (expr)
             {
                 case BinaryExpr binary:
                     return evaluateBinary(binary);
@@ -46,335 +42,244 @@ namespace Scrippy
                 case DictExpr dict:
                     return evaluateDict(dict);
             }
-
             return null;
         }
 
-#warning dont immediately eval left & right -> pass node only -> can control whether lazy/eager
-        private object evaluateBinary(BinaryExpr node)
+        private Value evaluateBinary(BinaryExpr binary)
         {
-            object left = evaluate(node.left);
-            object right = evaluate(node.right); //be eager not lazy
+            Token t = binary.op;
+            Debug.Assert(t.type == TokenType.Plus || t.type == TokenType.Minus || t.type == TokenType.Div ||
+                t.type == TokenType.Mod || t.type == TokenType.Mult || t.type == TokenType.Power ||
+                t.type == TokenType.More || t.type == TokenType.MoreEQ || t.type == TokenType.Less || t.type == TokenType.LessEQ ||
+                t.type == TokenType.Spaceship || t.type == TokenType.Equal || t.type == TokenType.NotEQ || t.type == TokenType.RefEQ ||
+                t.type == TokenType.And || t.type == TokenType.Or || t.type == TokenType.Elvis || t.type == TokenType.NullCoalesce);
 
-            switch (node.op.type)
+            switch (t.type)
             {
-                //Arithmetic
                 case TokenType.Plus:
                 case TokenType.Minus:
                 case TokenType.Div:
                 case TokenType.Mult:
-                case TokenType.Mod:
                 case TokenType.Power:
-                    return evaluateArithmetic(left, right, node);
-                //Comparison
-                case TokenType.Less:
-                case TokenType.LessEQ:
+                case TokenType.Mod:
+                    return evaluateArithmetic(binary);
                 case TokenType.More:
                 case TokenType.MoreEQ:
+                case TokenType.Less:
+                case TokenType.LessEQ:
                 case TokenType.Spaceship:
-                    return evaluateComparison(left, right, node);
-                //Equality
+                    return evaluateComparison(binary);
+                case TokenType.Equal:
+                case TokenType.NotEQ:
                 case TokenType.RefEQ:
-                case TokenType.Equal:
-                case TokenType.NotEQ:
-                    return evaluateEquality(left, right, node);
-                //Logical
+                    return evaluateEquality(binary);
                 case TokenType.And:
                 case TokenType.Or:
-                    return evaluateLogical(left, right, node);
-                //Fallback
+                    return evaluateLogical(binary);
                 case TokenType.Elvis:
                 case TokenType.NullCoalesce:
-                    return evaluateFallback(left, right, node);
+                    return evaluateFallback(binary);
             }
-            return null;
+            
+            throw new NotImplementedException();
         }
 
-        #region Binary Helpers
-
-        private object evaluateArithmetic(object left, object right, BinaryExpr node)
+        #region Binary Operators
+        private Value evaluateArithmetic(BinaryExpr binary)
         {
-            switch(node.op.type)
+            Value left = evaluate(binary.left);
+            Value right = evaluate(binary.right);
+
+            switch(binary.op.type)
             {
                 case TokenType.Plus:
-                    if (left is double && right is double) { return (double) left + (double) right; }
-                    if (left is string) { return (string) left + stringify(right); }
-                    if (left is List<object> ll && right is List<object> lr) { return ll.Concat(lr).ToList(); }
-                    if (left is List<object> ll1) { return ll1.Append(right).ToList(); }
-                    if (left is Dictionary<object, object> dl && right is Dictionary<object, object> dr)
-                    {
-                        try { return dl.Concat(dr).ToDictionary(kvp => kvp.Key, kvp => kvp.Value); }
-                        catch (ArgumentException) { throw error(node, $"Duplicate key found when adding two dictionaries together: '{stringify(dl.Keys.Intersect(dr.Keys).First())}'"); }
-                    }
-                    break;
-
+                    if (left is ArrValue a) { return a + right; }
+                    if (left is NumValue nl && right is NumValue nr) { return nl + nr; }
+                    if (left is StrValue sl && right is StrValue sr) { return sl + sr; }
+                    if (left is DictValue dl && right is DictValue dr) { return dl + dr; }
+                    throw error(binary, $"Unsupported operand for addition: {left.getTypeName()}, {right.getTypeName()}");
                 case TokenType.Minus:
-                    if (left is double && right is double) { return (double) left - (double) right; }
-                    if (left is string sl && right is string sr) 
-                    { 
-                        if (sl.EndsWith(sr)) { return sl.Substring(0, sl.Length - sr.Length); }
-                        throw error(node, $"String {sl} does not end with {sr}");
-                    }
-                    break;
-
+                    if (left is NumValue nl2 && right is NumValue nr2) { return nl2 - nr2; }
+                    if (left is StrValue sl2 && right is StrValue sr2) { return sl2 - sr2; }
+                    throw error(binary, $"Unsupported operand for subtraction: {left.getTypeName()}, {right.getTypeName()}");
                 case TokenType.Mult:
-                    if (left is double && right is double) { return (double) left * (double) right; }
-                    //if right = 0 -> empty string/list -> dict cant multiply because duplicate keys
-                    if (left is string && isNonNegativeInt(right)) { return string.Concat(Enumerable.Repeat(left, (int) (double) right)); }
-                    if (left is List<object> ll2 && isNonNegativeInt(right)) { return Enumerable.Repeat(ll2, (int) (double) right).SelectMany(x => x).ToList(); }
-                    if (left is Dictionary<object, object> && isNonNegativeInt(right) && (int) (double) right == 0) { return new Dictionary<object, object>(); } //empty dictionary
-                    break;
-
+                    if (!(right is NumValue nr3)) { throw error(binary, $"Unsupported operand for multiplication: {left.getTypeName()}, {right.getTypeName()}"); }
+                    if (left is DictValue d) { return d * nr3; }
+                    if (left is ArrValue al3) { return al3 * nr3; }
+                    if (left is NumValue nl3) { return nl3 * nr3; }
+                    if (left is StrValue s) { return s * nr3; }
+                    throw error(binary, $"Unsupported operand for multiplication: {left.getTypeName()}, {right.getTypeName()}");
                 case TokenType.Div:
-                    return (double) left / (double) right;
+                    if (left is NumValue nl4 && right is NumValue nr4) { return nl4 / nr4; }
+                    throw error(binary, $"Unsupported operand for division: {left.getTypeName()}, {right.getTypeName()}");
                 case TokenType.Mod:
-                    return (double) left % (double) right; //yay c# modulus is truncation
+                    if (left is NumValue nl5 && right is NumValue nr5) { return nl5 % nr5; }
+                    throw error(binary, $"Unsupported operand for division: {left.getTypeName()}, {right.getTypeName()}");
                 case TokenType.Power:
-                    return Math.Pow((double) left, (double) right);
-            }
-
-            return null; //should be unreachable
-        }
-        private object evaluateComparison(object left, object right, BinaryExpr node)
-        {
-            switch (node.op.type)
-            {
-#warning add lists + dictionaries
-                case TokenType.Less:
-                    if (left == null && right == null) { return false; }
-                    if (left is double && right is double) { return (double) left < (double) right; }
-                    if (left is string && right is string) { return string.CompareOrdinal((string) left, (string) right) < 0; }
-                    break;
-                case TokenType.More:
-                    if (left == null && right == null) { return false; }
-                    if (left is double && right is double) { return (double) left > (double) right; }
-                    if (left is string && right is string) { return string.CompareOrdinal((string) left, (string) right) > 0; }
-                    break;
-                case TokenType.LessEQ:
-                    if (left == null && right == null) { return false; }
-                    if (left is double && right is double) { return (double) left <= (double) right; }
-                    if (left is string && right is string) { return string.CompareOrdinal((string) left, (string) right) <= 0; }
-                    break;
-                case TokenType.MoreEQ:
-                    if (left == null && right == null) { return false; }
-                    if (left is double && right is double) { return (double) left >= (double) right; }
-                    if (left is string && right is string) { return string.CompareOrdinal((string) left, (string) right) >= 0; }
-                    break;
-                case TokenType.Spaceship:
-                    if (left == null && right == null) { return 0; }
-                    if (left is double && right is double) { return ((double) left).CompareTo((double) right); }
-                    if (left is string && right is string) { return string.CompareOrdinal((string) left, (string) right); }
-                    break;
-            }
-            return null; //should be unreachable
-        }
-
-        private object evaluateEquality(object left, object right, BinaryExpr node)
-        {
-            switch (node.op.type)
-            {
-                case TokenType.RefEQ: //for primitives is always true, others is reference equality
-                    if (left == null && right == null) { return true; }
-                    if (left is double && right is double) { return (double) left == (double) right; }
-                    if (left is bool && right is bool) { return (bool) left == (bool) right; }
-                    return ReferenceEquals(left, right);
-                case TokenType.Equal:
-                    return deepValueEqual(left, right);
-                case TokenType.NotEQ:
-                    return !deepValueEqual(left, right);
-            }
-            return null; //should be unreachable
-        }
-
-        private object evaluateLogical(object left, object right, BinaryExpr node)
-        {
-            switch (node.op.type)
-            {
-                case TokenType.And:
-                    return (bool?) left & (bool?) right; //yay 3-value logic
-                case TokenType.Or:
-                    return (bool?) left | (bool?) right;
-            }
-            return null; //should be unreachable
-        }
-
-        private object evaluateFallback(object left, object right, BinaryExpr node)
-        {
-            switch(node.op.type)
-            {
-                case TokenType.NullCoalesce:
-                    return left ?? right;
-                case TokenType.Elvis:
-                    return isTruthy(left) ? left : right; //implicit conversions for elvis, not for ternary -> ternary is explicit
-            }
-            return null; //should be unreachable
-        }
-        #endregion
-
-        private object evaluateGrouping(GroupingExpr node) { return evaluate(node.expr); }
-
-        private object evaluateLiteral(LiteralExpr node) { return node.value; } //LiteralExpr will not contain more IExpr
-
-        private object evaluateUnary(UnaryExpr node)
-        {
-            object right = evaluate(node.right);
-            switch (node.op.type)
-            {
-                case TokenType.Not:
-                    return !(bool?) right;
-                case TokenType.Minus:
-                    if (right is string s) { char[] c = s.ToCharArray(); Array.Reverse(c); return new string(c); }
-                    if (right is double) { return -(double) right; }
-                    break;
-                case TokenType.Plus:
-                    return +(double) right;
-            }
-            return null; //should be unreachable
-        }
-
-        private object evaluateTernary(TernaryExpr node)
-        {
-            object left = evaluate(node.left);
-            if (node.mainOp.type == TokenType.TernCond && node.sideOp.type == TokenType.Colon)
-            {
-                return (bool) left ? evaluate(node.mid) : evaluate(node.right); //lazy
+                    if (left is NumValue nl6 && right is NumValue nr6) { return (NumValue) Math.Pow((double) nl6, (double) nr6); }
+                    throw error(binary, $"Unsupported operand for exponentiation: {left.getTypeName()}, {right.getTypeName()}");
             }
 
             return null;
         }
-
-        private object evaluateArray(ArrayExpr node)
+        private Value evaluateComparison(BinaryExpr binary)
         {
-            List<object> elements = new List<object>();
-            foreach (Expr element in node.elements)
+            Value left = evaluate(binary.left);
+            Value right = evaluate(binary.right);
+
+            switch(binary.op.type)
             {
-                elements.Add(evaluate(element));
+                case TokenType.Less:
+                    return (BoolValue) (left.CompareTo(right) < 0);
+                case TokenType.LessEQ:
+                    return (BoolValue) (left.CompareTo(right) <= 0);
+                case TokenType.More:
+                    return (BoolValue) (left.CompareTo(right) > 0);
+                case TokenType.MoreEQ:
+                    return (BoolValue) (left.CompareTo(right) >= 0);
+                case TokenType.Spaceship:
+                    return new NumValue(left.CompareTo(right));
             }
-            return elements;
+
+            return null;
         }
-
-        private object evaluateDict(DictExpr node)
+        private Value evaluateEquality(BinaryExpr binary)
         {
-            Dictionary<object, object> elements = new Dictionary<object, object>();
-            foreach (KeyValuePair<Expr, Expr> element in node.elements)
+            Value left = evaluate(binary.left);
+            Value right = evaluate(binary.right);
+
+            switch(binary.op.type)
             {
-                object key = evaluate(element.Key);
-                object value = evaluate(element.Value);
-                if (elements.ContainsKey(key))
-                {
-                    throw error(element.Key, $"Duplicate key found in dictionary literal: '{stringify(key)}'");
-                }
-                elements[key] = value;
+                case TokenType.Equal:
+                    return (BoolValue) left.Equals(right);
+                case TokenType.NotEQ:
+                    return (BoolValue) !left.Equals(right);
+                case TokenType.RefEQ:
+                    if (left is NumValue && right is NumValue) { return (BoolValue) left.Equals(right); } //value types
+                    return (BoolValue) ReferenceEquals(left, right); //for bool & null are interned, all bools/nulls point to same
             }
-            return elements;
+
+            return null;
+        }
+#warning fininsh later
+        private Value evaluateLogical(BinaryExpr binary) //lazy
+        {
+            Value left = evaluate(binary.left);
+
+            switch (binary.op.type)
+            {
+                case TokenType.And:
+                    if (!(left is BoolValue || left is NullValue)) { throw error(binary.left, $"Unsupported operand for logical and: {left.getTypeName()}"); }
+                    if (left.Equals(BoolValue.falseInstance)) { return BoolValue.falseInstance; }
+                    //find right instance if no short circuit
+                    Value ra = evaluate(binary.right);
+                    if (!(ra is BoolValue || ra is NullValue)) { throw error(binary.right, $"Unsupported operand for logical and: {ra.getTypeName()}"); }
+                    //left = true/null, right = null/false/true
+                    break;
+
+                case TokenType.Or:
+                    if (!(left is BoolValue || left is NullValue)) { throw error(binary.left, $"Unsupported operand for logical or: {left.getTypeName()}"); }
+                    if (left.Equals(BoolValue.trueInstance)) { return BoolValue.trueInstance; }
+                    //find right instance if no short circuit
+                    Value ro = evaluate(binary.right);
+                    if (!(ro is BoolValue || ro is NullValue)) { throw error(binary.right, $"Unsupported operand for logical or: {ro.getTypeName()}"); }
+                    //left = false/null, right = null/false/true
+
+                    break;
+            }
+
+            return null;
+        }
+        private Value evaluateFallback(BinaryExpr binary) //lazy
+        {
+            Value left = evaluate(binary.left);
+
+            switch(binary.op.type)
+            {
+                case TokenType.NullCoalesce:
+                    return !(left is NullValue) ? left : evaluate(binary.right);
+                case TokenType.Elvis:
+                    return left.isTruthy() ? left : evaluate(binary.right);
+            }
+
+            return null;
         }
         #endregion
 
-        #region Helpers
-        public static string stringify(object obj) //only for output -> final types not IExpr
+        private Value evaluateUnary(UnaryExpr unary)
         {
-            if (obj == null) { return "null"; }
-            if (obj is string str) { return str; }
-            if (obj is double d) { return d.ToString(); }
-            if (obj is bool b) { return b.ToString(); }
-            if (obj is List<object> list)
+            Token t = unary.op;
+            Debug.Assert(t.type == TokenType.Plus || t.type == TokenType.Minus || t.type == TokenType.Not);
+
+            Value right = evaluate(unary.right);
+            switch (t.type)
             {
-                string sl = "[";
-                for (int i = 0; i < list.Count; i++)
-                {
-                    sl += stringify(list[i]);
-                    sl += (i < list.Count - 1) ? ", " : "";
-                }
-                sl += "]";
-                return sl;
+                case TokenType.Plus:
+                    if (right is BoolValue || right is NullValue) { throw error(unary.right, $"Unsupported operand type for unary plus: {right.getTypeName()}"); }
+                    return right; //unary plus does nothing
+                case TokenType.Minus:
+                    if (right is NumValue n) { return -n; }
+                    if (right is StrValue s) { return -s; }
+                    if (right is ArrValue a) { return -a; }
+                    throw error(unary.right, $"Unsupported operand type for unary minus: {right.getTypeName()}");
+                case TokenType.Not:
+                    if (right is BoolValue b) { return !b; }
+                    if (right is NullValue) { return NullValue.instance; } //use 3-value logic
+                    throw error(unary.right, $"Unsupported operand type for logical not: {right.getTypeName()}");
             }
-            if (obj is Dictionary<object, object> dict)
+            throw new NotImplementedException();
+        }
+
+        private Value evaluateTernary(TernaryExpr ternary)
+        {
+            Token main = ternary.mainOp; Token side = ternary.sideOp;
+            Debug.Assert(main.type == TokenType.TernCond && side.type == TokenType.Colon ||
+                main.type == TokenType.Range && side.type == TokenType.Colon);
+
+            Value condition = evaluate(ternary.left);
+            if (main.type == TokenType.TernCond && side.type == TokenType.Colon) //lazy
             {
-                string sd = "[";
-                for (int i = 0; i < dict.Count; i++)
-                {
-                    sd += $"{stringify(dict.Keys.ElementAt(i))}: {stringify(dict.Values.ElementAt(i))}";
-                    sd += (i < dict.Count - 1) ? ", " : "";
-                }
-                sd += "]";
-                if (sd == "[]") { sd = "[:]"; }
-                return sd;
+                if (condition is BoolValue b) { return (bool) b ? evaluate(ternary.mid) : evaluate(ternary.right); }
+                throw error(ternary.left, $"Unsupported operand type for ternary condition: {condition.getTypeName()}");
             }
-            return obj.ToString();
+            throw new NotImplementedException($"Add range pls");
         }
 
-        //falsey values: null, false, 0, NaN, "", [] (arrays and dictionaries)
-        public static bool isTruthy(object obj)
-        {
-            if (obj == null) { return false; }
-            if (obj is bool b) { return b; }
-            if (obj is double d) { return d != 0 && !double.IsNaN(d); }
-            if (obj is string s) { return !string.IsNullOrEmpty(s); }
-            if (obj is List<object> list) { return list.Count > 0; }
-            if (obj is Dictionary<object, object> dict) { return dict.Count > 0; }
+        private Value evaluateGrouping(GroupingExpr grouping) { return evaluate(grouping.expr); }
 
-            return true;
-        }
-
-        //yay c# modulus is truncation not round down -> -7 % 3 = -1
-#warning for infinit -> modulus become NaN
-        public static bool isInteger(object obj) { return obj is double d && d % 1 < 0.0000001 && d % 1 > -0.0000001; }
-
-        public static bool isNonNegativeInt(object obj) { return isInteger(obj) && (double) obj >= 0; } //can also be 0
-
-        public static bool deepValueEqual(object o1, object o2)
-        {
-            if (o1 == null) { return o2 == null; } //prevents NullReferenceException in GetType()
-            if (o2 == null) { return o1 == null; }
-
-            if (o1.GetType() != o2.GetType()) { return false; }
-            if (o1 is string s) { return s == (string) o2; }
-            if (o1 is double d) { return d == (double) o2; }
-            if (o1 is bool b) { return b == (bool) o2; }
-
-            if (o1 is List<object> l1)
+        private Value evaluateLiteral(LiteralExpr literal) 
+        { 
+            Debug.Assert(literal.value == null || literal.value is double || literal.value is string || literal.value is bool);
+            switch (literal.value)
             {
-                List<object> l2 = (List<object>) o2;
-                if (l1.Count != l2.Count) { return false; } //short circuit for optimize
-                bool equal = true;
-                for (int i = 0; i < l1.Count && equal; i++) //should work? -> break once equal is false
-                {
-                    equal = equal && deepValueEqual(l1[i], l2[i]);
-                }
-                return equal;
+                case null: return NullValue.instance;
+                case double d: return new NumValue(d);
+                case string s: return new StrValue(s);
+                case bool b: return b ? BoolValue.trueInstance : BoolValue.falseInstance;
             }
+            throw new NotImplementedException();
+        }
 
-            if (o1 is Dictionary<object, object> d1)
+        private Value evaluateArray(ArrayExpr array)
+        {
+            List<Value> values = new List<Value>();
+            foreach (Expr elem in array.elements) { values.Add(evaluate(elem)); }
+            return new ArrValue(values);
+        }
+
+        private Value evaluateDict(DictExpr dict)
+        {
+            Dictionary<Value, Value> values = new Dictionary<Value, Value>();
+            foreach (KeyValuePair<Expr, Expr> kvp in dict.elements)
             {
-                Dictionary<object, object> d2 = (Dictionary<object, object>) o2;
-                if (d1.Count !=  d2.Count) { return false; }
-                bool equal = true;
-                foreach (KeyValuePair<object, object> kvp in d1)
-                {
-#warning doesnt work for [[1, 2]: 5] == [[1, 2]: 5] ALSO LOOKUP WONT WORK BCS C# uses weird hash things
-                    object d2Val;
-                    try { d2Val = d2[kvp.Key]; }
-                    catch (KeyNotFoundException) { equal = false; break; }
-                    equal = equal && deepValueEqual(kvp.Value, d2Val);
-                }
-                return equal;
+                Value key = evaluate(kvp.Key);
+                Value value = evaluate(kvp.Value);
+                if (!key.isHashable()) { throw error(kvp.Key, $"Key {key.ToString()} is not hashable, cannot be used as a dictionary key"); }
+                if (values.ContainsKey(key)) { throw error(kvp.Key, $"Duplicate key {key.ToString()} found in dictionary"); }
+                values.Add(key, value);
             }
-
-            return Equals(o1, o2); //should be unreachable
+            return new DictValue(values);
         }
-
-        public static int compare(List<object> l1, List<object> l2)
-        {
-            return 0;
-        }
-
-        public static int compare(Dictionary<object, object> d1, Dictionary<object, object> d2)
-        {
-            return 0;
-        }
-
-
-        #endregion
 
         #region Errors and Warnings
         private Diagnostic error(Expr e, string message)
@@ -383,7 +288,7 @@ namespace Scrippy
             for (int i = 0; i < strings.Length; i++) { strings[i] = Program.lines[e.lineStart + i - 1]; }
             return new Diagnostic(e.lineStart, strings, message, DiagnosticLevel.ERROR);
         }
-        private Diagnostic warning(Expr e, string message) 
+        private Diagnostic warning(Expr e, string message)
         {
             string[] strings = new string[e.lineEnd - e.lineStart + 1];
             for (int i = 0; i < strings.Length; i++) { strings[i] = Program.lines[e.lineStart + i - 1]; }

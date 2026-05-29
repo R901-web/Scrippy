@@ -1,8 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Text;
 
 namespace Scrippy
@@ -15,7 +12,6 @@ namespace Scrippy
         {
             Console.OutputEncoding = Encoding.UTF8; //goes to \uD7A3
             Console.InputEncoding = Encoding.UTF8;
-
 
             //get filename
             string filename;
@@ -45,7 +41,7 @@ namespace Scrippy
                 DiagnosticHandler.reportAll();
                 return;
             }
-            foreach(Token t in tokens) { Console.WriteLine(DebugTools.stringify(t)); }
+            foreach (Token t in tokens) { Console.WriteLine(DebugTools.stringify(t)); }
             if (DiagnosticHandler.hadWarning) { DiagnosticHandler.reportAll(); DiagnosticHandler.clear(); }
 
             Console.WriteLine();
@@ -63,14 +59,14 @@ namespace Scrippy
             Console.WriteLine();
 
             Interpreter i = new Interpreter(expr);
-            object output = i.interpretAST() ?? "null";
+            Value output = i.interpretAST();
 
             if (DiagnosticHandler.hadError)
             {
                 DiagnosticHandler.reportAll();
             }
 
-            Console.WriteLine(Interpreter.stringify(output));
+            Console.WriteLine(output);
             if (DiagnosticHandler.hadWarning) { DiagnosticHandler.reportAll(); DiagnosticHandler.clear(); }
         }
     }

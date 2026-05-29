@@ -1,8 +1,4 @@
-﻿using System;
-using System.CodeDom.Compiler;
-using System.Collections.Generic;
-using System.Linq;
-using System.Linq.Expressions;
+﻿using System.Collections.Generic;
 
 namespace Scrippy
 {
@@ -24,7 +20,7 @@ namespace Scrippy
         //Type names 
         NumType, StrType, BoolType, //if (type(x) == num) or if (type(y) == str) or if (bool(y))
         ArrType, DictType,
-        ObjType, 
+        ObjType,
 
         //Loops + Conditionals
         If, Else, Elif,
@@ -108,7 +104,7 @@ namespace Scrippy
 
         public int lineEnd
         {
-            get { return lineStart + source.Length - 1; }
+            get { return lineStart + lines.Length - 1; }
         }
 
         //for tokens with literal value

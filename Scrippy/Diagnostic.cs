@@ -49,7 +49,7 @@ namespace Scrippy
             if (compareSeverity != 0) { return compareSeverity; }
             int compareStart = this.lineStart - other.lineStart; //lower line number first
             if (compareStart != 0) { return compareStart; }
-            return (this.lineStart + this.source.Length) - (other.lineStart + other.source.Length); //lower line number first
+            return this.lineStart + this.source.Length - (other.lineStart + other.source.Length); //lower line number first
         }
 
         public bool Equals(Diagnostic other)
@@ -72,15 +72,10 @@ namespace Scrippy
         {
             int hash = 17; //seed number, should be prime -> reduce collisions
 
-            hash = hash * 23 + lineStart.GetHashCode(); //23 is also prime -> reduce collisions
-            hash = hash * 23 + Message.GetHashCode();
-            hash = hash * 23 + severity.GetHashCode();
-
-            foreach (string s in source)
-            {
-                hash = hash * 23 + (s?.GetHashCode() ?? 0);
-            }
-
+            hash = (hash * 23) + lineStart.GetHashCode(); //23 is also prime -> reduce collisions
+            hash = (hash * 23) + Message.GetHashCode();
+            hash = (hash * 23) + severity.GetHashCode();
+            foreach (string s in source) { hash = (hash * 23) + (s?.GetHashCode() ?? 0); }
             return hash;
         }
     }
@@ -114,7 +109,7 @@ namespace Scrippy
         {
             cleanup();
             Console.WriteLine("Diagnostics: ");
-            foreach (Diagnostic d in diag) 
+            foreach (Diagnostic d in diag)
             {
                 Console.WriteLine(d);
             }

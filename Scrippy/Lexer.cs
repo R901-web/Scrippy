@@ -3,12 +3,11 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Scrippy
 {
-    public class Lexer 
+    public class Lexer
     {
         public string source { get; }
 
@@ -36,7 +35,7 @@ namespace Scrippy
                 Token? token = tokenize();
                 if (token.HasValue) { tk.Add(token.Value); } //crashed at current = 156587360, line = 9586982, tk.Count = 33554432
             }
-
+            startLine = line;
             tk.Add(token(TokenType.EOF));
             return tk.ToArray();
         }
@@ -85,11 +84,11 @@ namespace Scrippy
                     if (match('=')) { return token(TokenType.NotEQ); }
                     else if (match(':')) { return token(TokenType.NotMatch); }
                     else { return token(TokenType.Not); }
-                case '&': 
+                case '&':
                     if (match('&')) { return token(TokenType.And); }
                     else if (match('=')) { return token(TokenType.AndAssign); }
                     else { return token(TokenType.PatAnd); }
-                case '|': 
+                case '|':
                     if (match('|')) { return token(TokenType.Or); }
                     else if (match('=')) { return token(TokenType.OrAssign); }
                     else { return token(TokenType.PatOr); }
@@ -194,8 +193,8 @@ namespace Scrippy
             while (isValid(peek())) //before fractional part/exponent part
             {
                 //warning if _ is last in number -> also works for isEnd
-                if (peek() == '_' && (peekNext() != 'E' && peekNext() != 'e' && !isValid(peekNext()))) { warning(line, "Trailing underscore in number literal"); }
-                sb.Append(advance()); 
+                if (peek() == '_' && peekNext() != 'E' && peekNext() != 'e' && !isValid(peekNext())) { warning(line, "Trailing underscore in number literal"); }
+                sb.Append(advance());
             }
             //fractional part -> if now is exponent just fall through
             if (peek() == '.' && isValid(peekNext())) //if peekNext() is invalid e.g. decimal -> 123.Equals() -> just fall through
@@ -212,7 +211,7 @@ namespace Scrippy
                 while (isValid(peek())) { sb.Append(advance()); }
 
                 //2nd decimal point -> 123.345.Equals() not caught, 123.345._eq() not caught, but 123.345.456 caught -> very sad that 123.456._789 not caught
-                if (peek() == '.' && isValid(peekNext()) && peekNext() != '_') 
+                if (peek() == '.' && isValid(peekNext()) && peekNext() != '_')
                 {
                     error(line, "Multiple decimal points in number literal");
                     finish();
@@ -220,7 +219,7 @@ namespace Scrippy
                 }
             }
             //exponents -> hexadecimals treat as any other number -> either return null in 2nd part or caught in 1st part
-            if (peek() == 'e' || peek() == 'E') 
+            if (peek() == 'e' || peek() == 'E')
             {
                 sb.Append(advance()); //consume exponent
 
@@ -286,7 +285,7 @@ namespace Scrippy
             void finish()
             {
                 //synchronise to newline or closing quote, whichever first
-                while (!isEnd() && peek() != '\n' && peek() != quote) 
+                while (!isEnd() && peek() != '\n' && peek() != quote)
                 {
                     if (peek() == '\\' && peekNext() == quote) { advance(); } //is an escape sequence
                     advance();
@@ -339,8 +338,8 @@ namespace Scrippy
                             catch (ArgumentOutOfRangeException) { error(line, "Invalid escape sequence"); finish(); return null; }
                             break;
                         default:
-                            error(line, "Invalid escape sequence"); 
-                            finish(); 
+                            error(line, "Invalid escape sequence");
+                            finish();
                             return null;
                     }
                 }
@@ -348,7 +347,7 @@ namespace Scrippy
                 {
                     if (peek() == '{' || peek() == '}') { warning(line, "String interpolation not supported yet"); }
                     sb.Append(advance());
-                } 
+                }
             }
             if (isEnd() || peek() == '\n') //still on single line, multiline string not supported
             {
@@ -369,7 +368,7 @@ namespace Scrippy
 
             StringBuilder sb = new StringBuilder();
 
-            Func<char, char, bool> isCloseQuote = delegate(char c1, char c2) { return c1 == inner && c2 == outer; };
+            Func<char, char, bool> isCloseQuote = delegate (char c1, char c2) { return c1 == inner && c2 == outer; };
 
             while (!isEnd() && !isCloseQuote(peek(), peekNext()))
             {
