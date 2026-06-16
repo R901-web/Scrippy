@@ -9,24 +9,27 @@ namespace Scrippy
         Const,
         Semicolon, Comma,
         LBrace, RBrace,
+        
+        //Built-in functions
         Read, Write,
+        Clone,
 
-        //Literals + Data types
+        //Literals
         Identifier,
         StringLiteral, NumberLiteral,
         BooleanLiteral, Null,
         LSqBrac, RSqBrac, //for arrays
 
         //Type names 
-        NumType, StrType, BoolType, //if (type(x) == num) or if (type(y) == str) or if (bool(y))
+        NumType, StrType, BoolType,
         ArrType, DictType,
-        ObjType,
+        ObjType, TypeType,
 
         //Loops + Conditionals
-        If, Else, Elif,
-        Switch, Case, Default,
+        If, Else,
+        Switch, Case,
         For, While,
-        Break, Continue, Return, //brk, cont, ret
+        Break, Continue, Return, //break, cont, return
 
         //Arithmetic
         Minus, Plus,
@@ -42,8 +45,8 @@ namespace Scrippy
         Equal, NotEQ,
         RefEQ, //:= always treturns true for primitives e.g. 5 := 5
         Spaceship, // <> operator -> returns -1 if left is less, 0 if equal, 1 if left is more
-        PatAnd, PatOr, //for pattern matching -> | and &
-        Match, NotMatch, //:: and !: e.g. if (x :: < 5 | > 8) {}
+        PatAnd, PatOr, 
+        Match, NotMatch, 
 
         //Other
         Range, In, //~, << e.g. if (x << [1, 2, 3]) {}, for (x << 2 ~ 5) {}
@@ -59,7 +62,7 @@ namespace Scrippy
         MultAssign, DivAssign,
         PowAssign, ModAssign, //^= and %=
         AndAssign, OrAssign, // &= and |=, equivalent to x = x && y, or x = x || y
-        NullAssign, // x ?= y, equivalent to x = x ?? y or x = (x != null) ? x : y
+        FalseAssign, // x ?= y, equivalent to x = x ?? y or x = (x != null) ? x : y
 
         EOF
     }
@@ -72,6 +75,7 @@ namespace Scrippy
             ["func"] = TokenType.Func, //responsible for both if (x :: func), and func f(x, y) {}
             ["read"] = TokenType.Read,
             ["write"] = TokenType.Write,
+            ["clone"] = TokenType.Clone,
             ["const"] = TokenType.Const,
             ["null"] = TokenType.Null,
             ["num"] = TokenType.NumType,
@@ -80,16 +84,15 @@ namespace Scrippy
             ["arr"] = TokenType.ArrType,
             ["dict"] = TokenType.DictType,
             ["obj"] = TokenType.ObjType,
+            ["type"] = TokenType.TypeType,
             ["if"] = TokenType.If,
-            ["elif"] = TokenType.Elif,
             ["else"] = TokenType.Else,
             ["switch"] = TokenType.Switch,
             ["case"] = TokenType.Case,
-            ["default"] = TokenType.Default,
             ["for"] = TokenType.For,
             ["while"] = TokenType.While,
             ["break"] = TokenType.Break,
-            ["continue"] = TokenType.Continue,
+            ["cont"] = TokenType.Continue,
             ["return"] = TokenType.Return,
             ["true"] = TokenType.BooleanLiteral,
             ["false"] = TokenType.BooleanLiteral
@@ -117,6 +120,6 @@ namespace Scrippy
         }
 
         //for tokens without literal value
-        public Token(TokenType type, string source, int line) : this(type, source, null, line) { }
+        public Token(TokenType type, string source, int lineStart) : this(type, source, null, lineStart) { }
     }
 }

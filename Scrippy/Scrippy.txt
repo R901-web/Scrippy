@@ -13,14 +13,7 @@ GOAL:
 
 
 TODO: 
-1. allow functions to continue after return?
-	func advance() {
-		return source[current];
-		current++;
-	}
-	- add finally block?
-
-2. add preprocessor directives?
+1. add preprocessor directives?
 	- #config nestedComments true
 	- #config multilineStrings true
 	- #warning lskdfj
@@ -29,19 +22,15 @@ TODO:
 	- #define lskje true
 	- #replace <> spaceship //replaces all instances of '<>' with 'spaceship' before lexing
 
-3. add operator like -- for lists/strings
-	-> remove the last element
+2. now i support read()
+	-> returns a string of user input
+	-> add read(num) or read(bool) -> returns number/bool, throws error if input cant be converted
+	-> default read() = read(str)
 
-
-
-
-types: 
-1. bool
-2. double
-3. string
-4. list
-5. dict
-6. null
+3. how do range
+	-> tuple of any 2 values? -> make ~ into a tuple operator e.g.
+	-> a << 3 ~ 5 means 3 < a and a < 5
+	-> a << [] ~ [:] means [] < a and a < [:]
 
 
 
@@ -107,14 +96,14 @@ func f(ref x) {
 	return x;
 }
 
-When a function has no return statement but is assigned to variable -> runtime error
+When a function has no return statement but is assigned to variable -> syntax error
 -> functions without return statement does not return null
 
 4. Conditionals
 if (x == 5)  {}
-elif (x == 6 && y == 7) {}
-elif (x <= 3 || y > 8) {}
-elif (x << -5 ~ -3)
+else if (x == 6 && y == 7) {}
+else if (x <= 3 || y > 8) {}
+else if (x << -5 ~ -3)
 else {}
 
 switch (x) {
@@ -122,7 +111,6 @@ switch (x) {
 	case (< 7) {}
 	case (2 ~ 8) {}
 	case (string) {}
-	default {}
 }
 
 5. Loops

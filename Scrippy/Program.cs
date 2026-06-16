@@ -47,27 +47,22 @@ namespace Scrippy
             Console.WriteLine();
 
             Parser p = new Parser(tokens);
-            Expr expr = p.parseTokens();
+            Stmt[] program = p.parseTokens();
+
+            foreach (Stmt s in program) { Console.WriteLine(DebugTools.stringify(s)); }
+            
             if (DiagnosticHandler.hadError)
             {
                 DiagnosticHandler.reportAll();
                 return;
             }
-            Console.WriteLine(DebugTools.detailString(expr));
+            //Console.WriteLine(DebugTools.detailString(program));
             if (DiagnosticHandler.hadWarning) { DiagnosticHandler.reportAll(); DiagnosticHandler.clear(); }
 
             Console.WriteLine();
 
-            Interpreter i = new Interpreter(expr);
-            Value output = i.interpretAST();
-
-            if (DiagnosticHandler.hadError)
-            {
-                DiagnosticHandler.reportAll();
-            }
-
-            Console.WriteLine(output);
-            if (DiagnosticHandler.hadWarning) { DiagnosticHandler.reportAll(); DiagnosticHandler.clear(); }
+            Interpreter i = new Interpreter(program);
+            i.interpretAST();
         }
     }
 }

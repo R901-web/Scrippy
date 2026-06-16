@@ -106,7 +106,7 @@ namespace Scrippy
                     if (match('?')) { return token(TokenType.NullCoalesce); }
                     else if (match('.')) { return token(TokenType.NullAccess); }
                     else if (match(':')) { return token(TokenType.Elvis); }
-                    else if (match('=')) { return token(TokenType.NullAssign); }
+                    else if (match('=')) { return token(TokenType.FalseAssign); }
                     else { return token(TokenType.TernCond); }
                 case ':':
                     if (match(':')) { return token(TokenType.Match); }

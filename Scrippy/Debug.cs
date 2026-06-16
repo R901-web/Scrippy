@@ -13,7 +13,7 @@ namespace Scrippy
             return $"[Type: {t.type}, Source: {t.source}, Lines: {t.lineStart} - {t.lineEnd}, Literal: {t.literal}]";
         }
 
-        public static string detailString(Expr i, int indent = 0)
+        public static string stringify(Expr i, int indent = 0)
         {
             string ind = new string(' ', 4 * indent);
             switch (i)
@@ -21,20 +21,20 @@ namespace Scrippy
                 case BinaryExpr b:
                     return $"{ind}BinaryExpr\n" +
                     $"{ind}{{\n" +
-                    $"{detailString(b.left, indent + 1)}\n" +
+                    $"{stringify(b.left, indent + 1)}\n" +
                     $"{ind}    Op: {b.op.source}\n" +
-                    $"{detailString(b.right, indent + 1)}\n" +
+                    $"{stringify(b.right, indent + 1)}\n" +
                     $"{ind}}}";
                 case GroupingExpr g:
                     return $"{ind}GroupingExpr\n" +
                     $"{ind}{{\n" +
-                    $"{detailString(g.expr, indent + 1)}\n" +
+                    $"{stringify(g.expr, indent + 1)}\n" +
                     $"{ind}}}";
                 case UnaryExpr u:
                     return $"{ind}UnaryExpr\n" +
                     $"{ind}{{\n" +
                     $"{ind}    Op: {u.op.source}\n" +
-                    $"{detailString(u.right, indent + 1)}\n" +
+                    $"{stringify(u.right, indent + 1)}\n" +
                     $"{ind}}}";
                 case LiteralExpr l:
                     if (l.value is string) { return $"{ind}LiteralExpr {{ \"{l.value}\" }}"; } //add quotes so I know its string
@@ -42,17 +42,17 @@ namespace Scrippy
                 case TernaryExpr t:
                     return $"{ind}TernaryExpr\n" +
                     $"{ind}{{\n" +
-                    $"{detailString(t.left, indent + 1)}\n" +
+                    $"{stringify(t.left, indent + 1)}\n" +
                     $"{ind}    MainOp: {t.mainOp.source}\n" +
-                    $"{detailString(t.mid, indent + 1)}\n" +
+                    $"{stringify(t.mid, indent + 1)}\n" +
                     $"{ind}    SideOp: {t.sideOp.source}\n" +
-                    $"{detailString(t.right, indent + 1)}\n" +
+                    $"{stringify(t.right, indent + 1)}\n" +
                     $"{ind}}}";
 
                 case ArrayExpr a:
                     string s1 = $"{ind}ArrayExpr\n" +
                         $"{ind}{{\n";
-                    foreach (Expr e in a.elements) { s1 += detailString(e, indent + 1) + "\n"; }
+                    foreach (Expr e in a.elements) { s1 += stringify(e, indent + 1) + "\n"; }
                     s1 += $"{ind}}}";
                     return s1;
                 case DictExpr d:
@@ -60,55 +60,107 @@ namespace Scrippy
                         $"{ind}{{\n";
                     foreach (KeyValuePair<Expr, Expr> kvp in d.elements)
                     {
-                        s2 += $"{detailString(kvp.Key, indent + 1)}\n";
-                        s2 += $"{detailString(kvp.Value, indent + 1)}\n";
+                        s2 += $"{stringify(kvp.Key, indent + 1)}\n";
+                        s2 += $"{stringify(kvp.Value, indent + 1)}\n";
                         if (kvp.Key != d.elements.Keys.Last()) { s2 += "\n"; }
                     }
                     s2 += $"{ind}}}";
                     return s2;
+                case VarExpr v:
+                    return $"{ind}VarExpr {{ {v.name.source} }}";
+                case IncrExpr ie:
+                    return $"{ind}IncrExpr\n" +
+                    $"{ind}{{\n" +
+                    $"{ind}    Name: {ie.name.source}\n" +
+                    $"{ind}    Type: {ie.incrType.type}\n" +
+                    $"{ind}    Position: {(ie.isPost ? "Postfix" : "Prefix")}\n" +
+                    $"{ind}}}";
+                case AssignExpr ae:
+                    return $"{ind}AssignExpr\n" +
+                    $"{ind}{{\n" +
+                    $"{ind}    Name: {ae.name.source}\n" +
+                    $"{stringify(ae.newValue, indent + 1)}\n" +
+                    $"{ind}}}\n";
+                case BlockExpr b:
+                    string s4 = $"{ind}BlockExpr\n" +
+                    $"{ind}{{\n";
+                    foreach (Stmt st in b.statements) { s4 += stringify(st, indent + 1) + "\n"; }
+                    s4 += stringify(b.last, indent + 1) + "\n";
+                    s4 += $"{ind}}}";
+                    return s4;
 
             }
             return null;
         }
 
-        public static string easyString(Expr obj)
+        public static string stringify(Stmt program, int indent = 0)
         {
-            if (obj == null) { return "null"; }
-
-            if (obj is GroupingExpr g) { return $"{easyString(g.expr)}"; }
-            if (obj is UnaryExpr u) { return $"({u.op.source}{easyString(u.right)})"; }
-            if (obj is BinaryExpr b) { return $"({easyString(b.left)} {b.op.source} {easyString(b.right)})"; }
-            if (obj is TernaryExpr t) { return $"({easyString(t.left)} {t.mainOp.source} {easyString(t.mid)} {t.sideOp.source} {easyString(t.right)})"; }
-            if (obj is LiteralExpr le)
+            string ind = new string(' ', 4 * indent);
+            switch (program)
             {
-                if (le.value is string) { return $"\"{le.value}\""; } //add quotes so I know its string
-                return $"{le.value}";
+                case ExprStmt e:
+                    return $"{ind}ExprStmt\n" +
+                    $"{ind}{{\n" +
+                    $"{stringify(e.expr, indent + 1)}\n" +
+                    $"{ind}}}\n";
+                case WriteStmt w:
+                    return $"{ind}WriteStmt\n" +
+                    $"{ind}{{\n" +
+                    $"{stringify(w.expr, indent + 1)}\n" +
+                    $"{ind}}}\n";
+                case VarDeclStmt v:
+                    string s = $"{ind}VarDeclStmt\n" +
+                    $"{ind}{{\n";
+                    s += $"{ind}    IsConst: {v.isConst}\n";
+                    foreach (Token t in v.names) { s += $"{ind}    Name: {t.source}\n"; }
+                    if (!v.initialized) { return s + $"{ind}}}\n"; }
+                    return s + 
+                    $"\n{stringify(v.initializer, indent + 1)}\n" +
+                    $"{ind}}}\n";
+                case ArrDestrStmt a:
+                    string s2 = $"{ind}ArrDestrStmt\n" +
+                    $"{ind}{{\n";
+                    s2 += $"{ind}    IsConst: {a.isConst}\n\n";
+                    foreach (Token t in a.names) { s2 += $"{ind}    Name: {t.source}\n"; }
+                    return s2 +
+                    $"\n{stringify(a.initializer, indent + 1)}\n" +
+                    $"{ind}}}\n";
+                case DictDestrStmt d:
+                    string s3 = $"{ind}DictDestrStmt\n" +
+                    $"{ind}{{\n";
+                    s3 += $"{ind}    IsConst: {d.isConst}\n\n";
+                    foreach (KeyValuePair<Token, Expr> kvp in d.names)
+                    {
+                        s3 += $"{ind}    {stringify(kvp.Key)}\n";
+                        s3 += $"{stringify(kvp.Value, indent + 1)}\n";
+                        s3 += "\n";
+                    }
+                    return s3 +
+                    $"\n{stringify(d.initializer, indent + 1)}\n" +
+                    $"{ind}}}\n";
+                case BlockStmt b:
+                    string s4 = $"{ind}BlockStmt\n" +
+                    $"{ind}{{\n";
+                    foreach (Stmt st in b.statements) { s4 += stringify(st, indent + 1) + "\n"; }
+                    s4 += $"{ind}}}\n";
+                    return s4;
+                case IfStmt i:
+                    return $"{ind}IfStmt\n" +
+                    $"{ind}{{\n" +
+                    $"{stringify(i.condition, indent + 1)}\n\n" +
+                    $"{stringify(i.ifBranch, indent + 1)}\n" +
+                    $"{(i.elseBranch == null ? null : stringify(i.elseBranch, indent + 1))}\n" +
+                    $"{ind}}}\n";
+                case WhileStmt w:
+                    return $"{ind}WhileStmt\n" +
+                    $"{ind}{{\n" +
+                    $"{stringify(w.condition, indent + 1)}\n\n" +
+                    $"{stringify(w.body, indent + 1)}\n" +
+                    $"{ind}}}\n";
+                case KeyStmt k:
+                    return $"{ind}KeyStmt {{ {k.keyword.source} }}\n";
             }
-
-            if (obj is ArrayExpr a)
-            {
-                string s = "[";
-                for (int i = 0; i < a.elements.Count; i++)
-                {
-                    s += easyString(a.elements[i]);
-                    s += (i < a.elements.Count - 1) ? ", " : "";
-                }
-                s += "]";
-                return s;
-            }
-            if (obj is DictExpr d)
-            {
-                string s = "[";
-                for (int i = 0; i < d.elements.Count; i++)
-                {
-                    s += $"{easyString(d.elements.Keys.ElementAt(i))}: {easyString(d.elements.Values.ElementAt(i))}";
-                    s += (i < d.elements.Count - 1) ? ", " : "";
-                }
-                s += ']';
-                return s;
-            }
-
-            return obj.ToString();
+            return null;
         }
     }
 }

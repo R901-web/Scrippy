@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 
 namespace Scrippy
 {
@@ -18,11 +19,19 @@ namespace Scrippy
      * BinaryExpr
      * GroupingExpr
      * UnaryExpr
+     * PostExpr
      * LiteralExpr -> null, number, string, boolean -> can be formed from 1 token + cannot lead to other IExprs -> must be leaves
      * TernaryExpr
      * ArrayExpr
      * DictionaryExpr
+     * VarExpr
+     * AssignExpr
+     * IncrExpr
+     * ReadExpr
+     * BlockExpr
      */
+
+#warning when i finish functions replace read and write
 
     public class BinaryExpr : Expr
     {
@@ -103,6 +112,60 @@ namespace Scrippy
         public DictExpr(Dictionary<Expr, Expr> items, int lineStart, int lineEnd) : base(lineStart, lineEnd)
         {
             this.elem = items;
+        }
+    }
+
+    public class VarExpr : Expr
+    {
+        public Token name { get; }
+
+        public VarExpr(Token name) : base(name.lineStart, name.lineEnd)
+        {
+            this.name = name;
+        }
+
+    }
+
+    public class AssignExpr : Expr
+    {
+        public Token name { get; }
+        public Expr newValue { get; }
+
+        public AssignExpr(Token name, Expr newValue) : base(name.lineStart, newValue.lineEnd)
+        {
+            this.name = name;
+            this.newValue = newValue;
+        }
+    }
+
+    public class IncrExpr : Expr
+    {
+        public Token name { get; }
+        public Token incrType { get; }
+        public bool isPost { get; }
+
+        public IncrExpr(Token name, Token incrType, bool isPost) : base(isPost ? name.lineStart : incrType.lineStart, isPost ? incrType.lineEnd : name.lineEnd)
+        {
+            this.name = name;
+            this.incrType = incrType;
+            this.isPost = isPost;
+        }
+    }
+
+    public class ReadExpr : Expr
+    {
+        public ReadExpr(int line) : base(line, line) { }
+        public ReadExpr(int lineStart, int lineEnd) : base(lineStart, lineEnd) { }
+    }
+
+    public class BlockExpr : Expr
+    {
+        public Stmt[] statements { get; }
+        public Expr last { get; }
+        public BlockExpr(Stmt[] statements, Expr last) : base(statements[0].lineStart, last.lineEnd)
+        { 
+            this.statements = statements;
+            this.last = last;
         }
     }
 }

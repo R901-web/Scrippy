@@ -16,14 +16,15 @@ namespace Scrippy
         public virtual bool isHashable() { return false; }
         public abstract string getTypeName();
 
-        protected static readonly Type[] typeOrder = new Type[] //null < bool < num < string < arr < dict
+        protected static readonly Type[] typeOrder = new Type[] //null < bool < num < string < arr < dict < type
         {
             typeof(NullValue),
             typeof(BoolValue),
             typeof(NumValue),
             typeof(StrValue),
             typeof(ArrValue),
-            typeof(DictValue)
+            typeof(DictValue), 
+            typeof(TypeValue)
         };
 
         public virtual int CompareTo(Value other)
@@ -33,11 +34,13 @@ namespace Scrippy
             if (thisIndex == -1 || otherIndex == -1) { throw new Exception($"Unknown type in comparison: {this.GetType()} or {other.GetType()}"); }
             return thisIndex.CompareTo(otherIndex);
         }
+
+        public abstract Value clone(); //provide a deep copy
     }
 
     public class DictValue : Value
     {
-        private Dictionary<Value, Value> values;
+        private readonly Dictionary<Value, Value> values;
 
         public DictValue(Dictionary<Value, Value> values)
         {
@@ -45,7 +48,7 @@ namespace Scrippy
             {
                 if (!key.isHashable()) { throw new Exception($"Key {key} is not hashable, cannot be used as a dictionary key"); }
             }
-            this.values = values;
+            this.values = new Dictionary<Value, Value>(values);
         }
 
         #region Wrapper
@@ -83,6 +86,14 @@ namespace Scrippy
             if (d.values.Count == 0) { return new DictValue(new Dictionary<Value, Value>()); }
             if (!n.isInt() || (long) n != 0) { throw new Exception($"Cannot multiply dictionary by nonzero number: {n}"); }
             return new DictValue(new Dictionary<Value, Value>());
+        }
+
+        public int length
+        {
+            get
+            {
+                return values.Count;
+            }
         }
         #endregion
 
@@ -146,13 +157,26 @@ namespace Scrippy
             }
             return (orderedSelf.Count.CompareTo(orderedOther.Count)); //if all keys and values equal, shorter dict is less
         }
+
+        public override Value clone()
+        {
+            Dictionary<Value, Value> newValues = new Dictionary<Value, Value>();
+            foreach (KeyValuePair<Value, Value> kvp in values)
+            {
+                newValues[kvp.Key.clone()] = kvp.Value.clone();
+            }
+            return new DictValue(newValues);
+        }
     }
 
     public class ArrValue : Value
     {
-        private List<Value> values;
+        private readonly List<Value> values;
 
-        public ArrValue(List<Value> values) { this.values = values; }
+        public ArrValue(List<Value> values) 
+        { 
+            this.values = new List<Value>(values);
+        }
 
         #region Wrapper
         public Value this[int index]
@@ -192,6 +216,26 @@ namespace Scrippy
             Value[] values = a.values.ToArray();
             Array.Reverse(values);
             return new ArrValue(values.ToList());
+        }
+
+        //directly modifies the list -> var a = [1, 2, 3]; var b = a; b--; print(a); -> [1, 2] since a and b reference same list
+        //previously would print [1, 2, 3] since b-- creates new list
+        public static ArrValue operator --(ArrValue a) 
+        {
+            if (a.values.Count == 0) { throw new Exception("Cannot decrement an empty array"); }
+            /*
+            List<Value> values = new List<Value>();
+            foreach (Value v in a.values) { values.Add(v); }
+            values.RemoveAt(values.Count - 1); //remove last element
+            return new ArrValue(values);
+            */
+            a.values.RemoveAt(a.values.Count - 1); //remove last element
+            return a;
+        }
+
+        public int length
+        {
+            get { return values.Count; }
         }
 
         #endregion
@@ -239,6 +283,16 @@ namespace Scrippy
             }
             return(values.Count.CompareTo(a.values.Count)); //if all values equal, shorter array is less
         }
+
+        public override Value clone()
+        {
+            List<Value> newValues = new List<Value>();
+            foreach (Value v in values)
+            {
+                newValues.Add(v.clone());
+            }
+            return new ArrValue(newValues);
+        }
     }
 
     public class BoolValue : Value //singleton -> reduce memory + only 2 values
@@ -246,7 +300,7 @@ namespace Scrippy
         public static BoolValue trueInstance { get; } = new BoolValue(true);
         public static BoolValue falseInstance { get; } = new BoolValue(false);
 
-        private bool value;
+        private readonly bool value;
         private BoolValue(bool value) { this.value = value; }
 
         #region Wrapper
@@ -274,11 +328,13 @@ namespace Scrippy
             if (otherType != 0) { return otherType; } //num > null/bool, num < str/arr/dict
             return value.CompareTo(((BoolValue) other).value);
         }
+
+        public override Value clone() { return this; } //immutable, can return self
     }
 
     public class NumValue : Value
     {
-        private double value;
+        private readonly double value;
         public NumValue(double value) { this.value = value; }
 
         #region Wrapper
@@ -291,6 +347,8 @@ namespace Scrippy
         public static NumValue operator /(NumValue a, NumValue b) { return new NumValue(a.value / b.value); }
         public static NumValue operator %(NumValue a, NumValue b) { return new NumValue(a.value % b.value); }
         public static NumValue operator -(NumValue a) { return new NumValue(-a.value); }
+        public static NumValue operator ++(NumValue a) { return new NumValue(a.value + 1); }
+        public static NumValue operator --(NumValue a) { return new NumValue(a.value - 1); }
         #endregion
 
         public override string ToString() { return value.ToString(CultureInfo.InvariantCulture); } //make sure 3.14 dont become 3,14
@@ -310,11 +368,15 @@ namespace Scrippy
             if (otherType != 0) { return otherType; } //num > null/bool, num < str/arr/dict
             return value.CompareTo(((NumValue) other).value);
         }
+        public override Value clone()
+        {
+            return this; //immutable, can return self
+        }
     }
 
     public class StrValue : Value
     {
-        private string value;
+        private readonly string value;
         public StrValue(string value) { this.value = value; }
 
         #region Wrapper
@@ -339,6 +401,11 @@ namespace Scrippy
             if (a.value.EndsWith(b.value)) { return new StrValue(a.value.Substring(0, a.value.Length - b.value.Length)); }
             else { throw new Exception($"{a} does not end with {b}"); }
         }
+        public static StrValue operator --(StrValue s)
+        {
+            if (s.value.Length == 0) { throw new Exception("Cannot decrement an empty string"); }
+            return new StrValue(s.value.Substring(0, s.value.Length - 1));
+        }
         #endregion
 
         public override string ToString() { return value; }
@@ -358,6 +425,10 @@ namespace Scrippy
             //lexicographic then length
             return value.CompareTo(((StrValue) other).value);
         }
+        public override Value clone()
+        {
+            return this; //immutable, can return self
+        }
     }
 
     public class NullValue : Value //singleton -> reduce memory + all nulls are the same
@@ -374,5 +445,46 @@ namespace Scrippy
         {
             return base.CompareTo(other); //null < all other types, all nulls equal
         }
+        public override Value clone() { return this; } //immutable, can return self
+    }
+
+    public class TypeValue : Value
+    {
+        private readonly Type value;
+
+        public TypeValue(Type value) 
+        {
+            if (!value.IsSubclassOf(typeof(Value))) { throw new Exception($"Unsupported type in TypeValue: {value}"); }
+            this.value = value; 
+        }
+        public TypeValue(Value v) { this.value = v.GetType(); }
+        public override string ToString() 
+        {
+            if (value == typeof(DictValue)) { return "dict"; }
+            else if (value == typeof(ArrValue)) { return "arr"; }
+            else if (value == typeof(StrValue)) { return "str"; }
+            else if (value == typeof(NumValue)) { return "num"; }
+            else if (value == typeof(BoolValue)) { return "bool"; }
+            else if (value == typeof(NullValue)) { return "null"; }
+            else if (value == typeof(TypeValue)) { return "type"; }
+            else { throw new Exception($"Unsupported type in TypeValue: {value}"); }
+        }
+        public override bool isTruthy() { return true; }
+        public override bool Equals(Value other) { return other is TypeValue t && t.value == value; }
+        public override int GetHashCode() { return value.GetHashCode(); }
+        public override bool isHashable() { return true; }
+        public override string getTypeName() { return "type"; }
+        public override int CompareTo(Value other) 
+        {
+            int otherType = base.CompareTo(other); //compare normally to toher types
+            if (otherType != 0) { return otherType; }
+
+            TypeValue t = (TypeValue) other; //else compare the types stored
+            int thisIndex = Array.IndexOf(typeOrder, this.value);
+            int otherIndex = Array.IndexOf(typeOrder, t.value);
+            if (thisIndex == -1 || otherIndex == -1) { throw new Exception($"Unsupported type in TypeValue: {this.value} or {t.value}"); }
+            return thisIndex.CompareTo(otherIndex);
+        }
+        public override Value clone() { return this; } //immutable, can return self
     }
 }
