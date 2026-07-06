@@ -50,16 +50,27 @@ namespace Scrippy
             Stmt[] program = p.parseTokens();
 
             foreach (Stmt s in program) { Console.WriteLine(DebugTools.stringify(s)); }
-            
+
             if (DiagnosticHandler.hadError)
             {
                 DiagnosticHandler.reportAll();
                 return;
             }
-            //Console.WriteLine(DebugTools.detailString(program));
             if (DiagnosticHandler.hadWarning) { DiagnosticHandler.reportAll(); DiagnosticHandler.clear(); }
 
             Console.WriteLine();
+
+            /*
+            Resolver r = new Resolver(program);
+            r.resolveAST();
+
+            if (DiagnosticHandler.hadError)
+            {
+                DiagnosticHandler.reportAll();
+                return;
+            }
+            if (DiagnosticHandler.hadWarning) { DiagnosticHandler.reportAll(); DiagnosticHandler.clear(); }
+            */
 
             Interpreter i = new Interpreter(program);
             i.interpretAST();

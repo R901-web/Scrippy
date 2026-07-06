@@ -22,18 +22,6 @@ TODO:
 	- #define lskje true
 	- #replace <> spaceship //replaces all instances of '<>' with 'spaceship' before lexing
 
-2. now i support read()
-	-> returns a string of user input
-	-> add read(num) or read(bool) -> returns number/bool, throws error if input cant be converted
-	-> default read() = read(str)
-
-3. how do range
-	-> tuple of any 2 values? -> make ~ into a tuple operator e.g.
-	-> a << 3 ~ 5 means 3 < a and a < 5
-	-> a << [] ~ [:] means [] < a and a < [:]
-
-
-
 Procedural: 
 1. Base types
 	- Boolean (bool)

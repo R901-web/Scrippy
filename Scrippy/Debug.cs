@@ -88,6 +88,20 @@ namespace Scrippy
                     s4 += stringify(b.last, indent + 1) + "\n";
                     s4 += $"{ind}}}";
                     return s4;
+                case CallExpr c:
+                    string s5 = $"{ind}CallExpr\n" +
+                    $"{ind}{{\n" +
+                    $"{stringify(c.caller, indent + 1)}\n\n";
+                    foreach (Expr e in c.arguments) { s5 += $"{stringify(e, indent + 1)}\n"; }
+                    return s5 + $"{ind}}}";
+                case FuncExpr f:
+                    string s6 = $"{ind}FuncExpr\n" +
+                    $"{ind}{{\n";
+                    foreach (Token t in f.param) { s6 += $"{ind}    Param: {t.source}\n"; }
+                    s6 += "\n";
+                    foreach (Stmt st in f.body) { s6 += stringify(st, indent + 1) + "\n"; }
+                    s6 += $"{ind}}}\n";
+                    return s6;
 
             }
             return null;
@@ -103,18 +117,13 @@ namespace Scrippy
                     $"{ind}{{\n" +
                     $"{stringify(e.expr, indent + 1)}\n" +
                     $"{ind}}}\n";
-                case WriteStmt w:
-                    return $"{ind}WriteStmt\n" +
-                    $"{ind}{{\n" +
-                    $"{stringify(w.expr, indent + 1)}\n" +
-                    $"{ind}}}\n";
                 case VarDeclStmt v:
                     string s = $"{ind}VarDeclStmt\n" +
                     $"{ind}{{\n";
                     s += $"{ind}    IsConst: {v.isConst}\n";
                     foreach (Token t in v.names) { s += $"{ind}    Name: {t.source}\n"; }
                     if (!v.initialized) { return s + $"{ind}}}\n"; }
-                    return s + 
+                    return s +
                     $"\n{stringify(v.initializer, indent + 1)}\n" +
                     $"{ind}}}\n";
                 case ArrDestrStmt a:
@@ -159,6 +168,21 @@ namespace Scrippy
                     $"{ind}}}\n";
                 case KeyStmt k:
                     return $"{ind}KeyStmt {{ {k.keyword.source} }}\n";
+                case FuncDeclStmt f:
+                    string s5 = $"{ind}FuncDeclStmt\n" +
+                    $"{ind}{{\n" +
+                    $"{ind}    Name: {f.name.source}\n\n";
+                    foreach (Token t in f.param) { s5 += $"{ind}    Param: {t.source}\n"; }
+                    s5 += "\n";
+                    foreach (Stmt st in f.body) { s5 += stringify(st, indent + 1) + "\n"; }
+                    s5 += $"{ind}}}\n";
+                    return s5;
+                case ReturnStmt r:
+                    return $"{ind}ReturnStmt\n" +
+                    $"{ind}{{\n" +
+                    $"{(r.value == null ? "\n" : stringify(r.value, indent + 1) + "\n")}" +
+                    $"{ind}}}\n";
+
             }
             return null;
         }

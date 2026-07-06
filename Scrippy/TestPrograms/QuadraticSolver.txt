@@ -1,0 +1,74 @@
+﻿func disc(a, b, c) {
+    return b ^ 2 - 4 * a * c;
+}
+
+func solveQuad(a, b, d, plus) {
+    var sign = plus ? 1 : -1;
+    return (-b + sign * d ^ (1 / 2)) / (2 * a);
+}
+
+func solveLin(a, b) {
+	return -b / a;
+}
+
+func coeff(eq, n, suffix) {
+	if (n == 0) { return ""; }
+	var s = "";
+	switch (n) {
+		case (1) { 
+			s += eq == "" ? "" : " + ";
+			s += suffix ?: "1";
+		}
+		case (> 0) { s += eq == "" ? str(n) + suffix : " + " + n + suffix; }
+		case (-1) { 
+			s += eq == "" ? "- " : " - ";
+			s += suffix ?: "1";
+		}
+		case (< 0) { 
+			s += eq == "" ? "- " : " - ";
+			s += str(-n) + suffix;
+		}
+	}
+	return s;
+}
+
+// Get coefficients
+write("Enter a: ", false);
+var a = read(num);
+write("Enter b: ", false);
+var b = read(num);
+write("Enter c: ", false);
+var c = read(num);
+write();
+
+// Format equation
+var eq = "";
+eq += coeff(eq, a, "x^2");
+eq += coeff(eq, b, "x");
+eq += coeff(eq, c, "");
+if (eq == "") { eq = "0"; }
+eq += " = 0";
+write("Solution to " + eq + ":");
+
+// Solve
+if (a == 0) {
+	if (b == 0) {
+		if (c == 0) { write("Infinite solution"); }
+		else { write("No solution"); }
+	}
+	else { write("x = " + solveLin(b, c)); }
+}
+else {
+	var d = disc(a, b, c);
+	
+	if (d < 0) {
+		write("No real solution");
+	}
+	else {
+		var s1 = solveQuad(a, b, d, false);
+		var s2 = solveQuad(a, b, d, true);
+		
+		if (s1 == s2) { write("x = " + s1); }
+		else { write("x = " + s1 + " or x = " + s2); }
+	}
+}

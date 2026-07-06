@@ -5,14 +5,9 @@ namespace Scrippy
     public enum TokenType
     {
         //Essential
-        Var, Func, //both for declarations and as type
-        Const,
+        Var, Func, Const, //both for declarations and as type 
         Semicolon, Comma,
         LBrace, RBrace,
-        
-        //Built-in functions
-        Read, Write,
-        Clone,
 
         //Literals
         Identifier,
@@ -38,22 +33,23 @@ namespace Scrippy
         Increment, Decrement, //x++ and x--
         LParen, RParen,
 
-        //Logical + Comparison
+        //Logical + Comparison + Equality
         Not, And, Or,
         Less, More,
         LessEQ, MoreEQ,
         Equal, NotEQ,
         RefEQ, //:= always treturns true for primitives e.g. 5 := 5
         Spaceship, // <> operator -> returns -1 if left is less, 0 if equal, 1 if left is more
-        PatAnd, PatOr, 
-        Match, NotMatch, 
+        PatAnd, PatOr,
+        Match, NotMatch,
 
         //Other
-        Range, In, //~, << e.g. if (x << [1, 2, 3]) {}, for (x << 2 ~ 5) {}
+        Rest, //~, << e.g. if (x << [1, 2, 3]) {}, for (x << 2 ~ 5) {}
         Elvis, NullCoalesce, //?: and ??
         Access, NullAccess, //. and ?.
         TernCond, Colon, //? in ternary, : for step or else
         Pipe, //f(g(h(x))) = x >> h >> g >> f
+        Lambda, //x -> x + 1, x -> 2 * x
         Underscore, //for f(g(2, h(x, 2))  =  x >> h(_, 2) >> g(2, _) >> f, or var [x, _, y] = f(2, 5)
 
         //Assignment
@@ -73,9 +69,6 @@ namespace Scrippy
         {
             ["var"] = TokenType.Var,
             ["func"] = TokenType.Func, //responsible for both if (x :: func), and func f(x, y) {}
-            ["read"] = TokenType.Read,
-            ["write"] = TokenType.Write,
-            ["clone"] = TokenType.Clone,
             ["const"] = TokenType.Const,
             ["null"] = TokenType.Null,
             ["num"] = TokenType.NumType,
@@ -95,7 +88,7 @@ namespace Scrippy
             ["cont"] = TokenType.Continue,
             ["return"] = TokenType.Return,
             ["true"] = TokenType.BooleanLiteral,
-            ["false"] = TokenType.BooleanLiteral
+            ["false"] = TokenType.BooleanLiteral,
         };
 
         public TokenType type { get; }

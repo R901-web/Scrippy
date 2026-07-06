@@ -1,58 +1,65 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using System.Xml.Linq;
 
 namespace Scrippy
 {
-    public class Interpreter
+    public class Environment
     {
-        public class Environment
+        public Environment parent { get; }
+        public Dictionary<string, Value> values { get; } = new Dictionary<string, Value>();
+        public Dictionary<string, Value> constants { get; } = new Dictionary<string, Value>();
+
+        public Environment(Environment parent = null)
         {
-            public Environment parent { get; }
-            public Dictionary<string, Value> values { get; } = new Dictionary<string, Value>();
-            public Dictionary<string, Value> constants { get; } = new Dictionary<string, Value>();
+            this.parent = parent;
+        }
 
-            public Environment(Environment parent = null)
+        public Value this[string key]
+        {
+            get
             {
-                this.parent = parent;                
-            }
-
-            public Value this[string key]
-            {
-                get
-                {
-                    if (constants.ContainsKey(key)) { return constants[key]; }
-                    if (values.ContainsKey(key)) { return values[key]; }
-                    if (parent != null) { return parent[key]; }
-                    throw new KeyNotFoundException($"Variable {key} has not been declared");
-                }
-            }
-
-            public void define(string key, Value value)
-            {
-                if (values.ContainsKey(key)) { throw new Exception($"Variable {key} has already been declared"); }
-                if (constants.ContainsKey(key)) { throw new Exception($"Constant {key} has already been declared"); }
-                values[key] = value;
-            }
-
-            public void assign(string key, Value value)
-            {
-                if (constants.ContainsKey(key)) { throw new Exception($"Cannot assign to constant {key}"); }
-                if (values.ContainsKey(key)) { values[key] = value; return; }
-                if (parent != null) { parent.assign(key, value); return; }
-                throw new Exception($"Variable {key} has not been declared");
-            }
-
-            public void defineConst(string key, Value value)
-            {
-                if (constants.ContainsKey(key)) { throw new Exception($"Constant {key} has already been declared"); }
-                if (values.ContainsKey(key)) { throw new Exception($"Variable {key} has already been declared"); }
-                constants[key] = value;
+                if (constants.ContainsKey(key)) { return constants[key]; }
+                if (values.ContainsKey(key)) { return values[key]; }
+                if (parent != null) { return parent[key]; }
+                throw new KeyNotFoundException($"Variable {key} has not been declared");
             }
         }
 
+        public void define(string key, Value value)
+        {
+            if (values.ContainsKey(key)) { throw new Exception($"Variable {key} has already been declared"); }
+            if (constants.ContainsKey(key)) { throw new Exception($"Constant {key} has already been declared"); }
+            values[key] = value;
+        }
+
+        public void assign(string key, Value value)
+        {
+            if (constants.ContainsKey(key)) { throw new Exception($"Cannot assign to constant {key}"); }
+            if (values.ContainsKey(key)) { values[key] = value ?? throw new Exception($"Invalid assignment to {key}"); return; }
+            if (parent != null) { parent.assign(key, value); return; }
+            throw new Exception($"Variable {key} has not been declared");
+        }
+
+        public void defineConst(string key, Value value)
+        {
+            if (constants.ContainsKey(key)) { throw new Exception($"Constant {key} has already been declared"); }
+            if (values.ContainsKey(key)) { throw new Exception($"Variable {key} has already been declared"); }
+            constants[key] = value;
+        }
+    }
+
+    public class Return : Diagnostic
+    {
+        public Value value { get; }
+        public Return(Diagnostic d, Value value) : base(d.lineStart, d.Message, d.severity)
+        {
+            this.value = value;
+        }
+    }
+
+    public class Interpreter
+    {
         public Stmt[] program { get; }
 
         private Environment environment { get; set; }
@@ -61,6 +68,37 @@ namespace Scrippy
         {
             this.program = program;
             environment = new Environment(); //global scope
+            environment.defineConst("clone", new NativeFuncValue(
+                delegate (Value[] input)
+                {
+                    if (input.Length != 1) { throw new Exception($"Incorrect number of arguments, expected 1 but got {input.Length}"); }
+                    return input[0].clone();
+                }, "clone"));
+            environment.defineConst("read", new NativeFuncValue(
+                delegate (Value[] input)
+                {
+                    if (input.Length != 0 && input.Length != 1) { throw new Exception($"Incorrect number of arguments, expected 0 or 1 but got {input.Length}"); }
+                    if (input.Length == 0) { return new StrValue(Console.ReadLine()); }
+                    else
+                    {
+                        if (!(input[0] is TypeValue t)) { throw new Exception($"Type value required in read function call, got {input[0].getTypeName()}"); }
+                        return new StrValue(Console.ReadLine()).castTo(t);
+                    }
+                }, "read"));
+            environment.defineConst("write", new NativeFuncValue(
+                delegate (Value[] input)
+                {
+                    if (input.Length != 0 && input.Length != 1 && input.Length != 2) { throw new Exception($"Incorrect number of arguments, expected 1 or 2 but got {input.Length}"); }
+                    if (input.Length == 0) { Console.WriteLine(); }
+                    if (input.Length == 1) { Console.WriteLine(input[0]); }
+                    if (input.Length == 2)
+                    {
+                        if (!(input[1] is BoolValue b)) { throw new Exception($"Boolean value required in write function call, got {input[1].getTypeName()}"); }
+                        if ((bool) b) { Console.WriteLine(input[0]); }
+                        else { Console.Write(input[0]); }
+                    }
+                    return null;
+                }, "write"));
         }
 
         public void interpretAST()
@@ -76,17 +114,14 @@ namespace Scrippy
         #region Statements
         private void execute(Stmt stmt)
         {
-            Debug.Assert(stmt is ExprStmt || stmt is WriteStmt || stmt is VarDeclStmt 
+            Debug.Assert(stmt is ExprStmt || stmt is VarDeclStmt
                 || stmt is BlockStmt || stmt is ArrDestrStmt || stmt is DictDestrStmt
-                || stmt is IfStmt || stmt is WhileStmt || stmt is KeyStmt);
+                || stmt is IfStmt || stmt is WhileStmt || stmt is KeyStmt || stmt is FuncDeclStmt || stmt is ReturnStmt);
 
             switch (stmt)
             {
                 case ExprStmt e:
                     executeExpr(e);
-                    return;
-                case WriteStmt w:
-                    executeWrite(w);
                     return;
                 case VarDeclStmt v:
                     executeVarDecl(v);
@@ -109,6 +144,12 @@ namespace Scrippy
                 case KeyStmt k:
                     executeKey(k);
                     return;
+                case FuncDeclStmt f:
+                    executeFuncDecl(f);
+                    return;
+                case ReturnStmt r:
+                    executeReturn(r);
+                    return;
             }
             throw new NotImplementedException();
         }
@@ -116,12 +157,6 @@ namespace Scrippy
         private void executeExpr(ExprStmt stmt)
         {
             evaluate(stmt.expr);
-        }
-
-        private void executeWrite(WriteStmt stmt)
-        {
-            Value v = evaluate(stmt.expr);
-            Console.Write(v);
         }
 
         private void executeBlock(BlockStmt stmt)
@@ -135,10 +170,11 @@ namespace Scrippy
         private void executeVarDecl(VarDeclStmt stmt)
         {
             Value value = stmt.initialized ? evaluate(stmt.initializer) : null;
+            if (stmt.initialized && value == null) { throw error(stmt.initializer, "Initializer must evaluate to a value"); }
             foreach (Token t in stmt.names)
             {
-                try 
-                { 
+                try
+                {
                     if (stmt.isConst) { environment.defineConst(t.source, value); }
                     else { environment.define(t.source, value); }
                 }
@@ -148,12 +184,13 @@ namespace Scrippy
 
         private void executeArrDestr(ArrDestrStmt stmt)
         {
-            ArrValue v = (ArrValue) evaluate(stmt.initializer); //an ArrValue
-
+            Value value = evaluate(stmt.initializer);
+            if (!(value is ArrValue v)) { throw error(stmt.initializer, $"Unsupported type for array destructuring: {value.getTypeName()}"); }
             for (int i = 0; i < v.length; i++)
             {
                 try
                 {
+                    if (stmt.names[i].type == TokenType.Underscore) { continue; }
                     if (stmt.isConst) { environment.defineConst(stmt.names[i].source, v[i]); }
                     else { environment.define(stmt.names[i].source, v[i]); }
                 }
@@ -163,11 +200,12 @@ namespace Scrippy
 
         private void executeDictDestr(DictDestrStmt stmt)
         {
-            DictValue v = (DictValue) evaluate(stmt.initializer);
-
-            foreach(KeyValuePair<Token, Expr> kvp in stmt.names)
+            Value value = evaluate(stmt.initializer);
+            if (!(value is DictValue v)) { throw error(stmt.initializer, $"Unsupported type for dictionary destructuring: {value.getTypeName()}"); }
+            foreach (KeyValuePair<Token, Expr> kvp in stmt.names)
             {
                 Token varName = kvp.Key;
+                if (varName.type == TokenType.Underscore) { throw new NotImplementedException(); } //should not trigger
                 Value dictName = evaluate(kvp.Value);
                 try
                 {
@@ -204,10 +242,10 @@ namespace Scrippy
                     throw error(stmt, $"Boolean value required for while statment, got {v.getTypeName()}");
                 }
                 if (!(bool) b) { break; }
-                else 
+                else
                 {
                     try { execute(stmt.body); }
-                    catch(Diagnostic d) when (d.Message == "Break keyword outside of loop" || d.Message == "Continue keyword outside of loop")
+                    catch (Diagnostic d) when (d.Message == "Break keyword outside of loop" || d.Message == "Continue keyword outside of loop")
                     {
                         if (d.Message == "Continue keyword outside of loop") { continue; }
                         else if (d.Message == "Break keyword outside of loop") { break; }
@@ -220,6 +258,20 @@ namespace Scrippy
         {
             if (stmt.keyword.type == TokenType.Break) { throw error(stmt, "Break keyword outside of loop"); }
             else if (stmt.keyword.type == TokenType.Continue) { throw error(stmt, "Continue keyword outside of loop"); }
+            throw new NotImplementedException();
+        }
+
+        private void executeFuncDecl(FuncDeclStmt stmt)
+        {
+            Value f = new FuncValue(stmt.param, stmt.body, environment); //shared reference to current env.
+            try { environment.defineConst(stmt.name.source, f); }
+            catch (Exception e) { throw error(stmt, e.Message); }
+        }
+
+        private void executeReturn(ReturnStmt stmt)
+        {
+            Value value = stmt.value == null ? null : evaluate(stmt.value);
+            throw new Return(error(stmt, "Return statement outside of method"), value);
         }
         #endregion
 
@@ -230,7 +282,7 @@ namespace Scrippy
             Debug.Assert(expr is UnaryExpr || expr is BinaryExpr || expr is TernaryExpr ||
                 expr is LiteralExpr || expr is ArrayExpr || expr is DictExpr ||
                 expr is GroupingExpr || expr is VarExpr || expr is AssignExpr || expr is IncrExpr ||
-                expr is ReadExpr || expr is BlockExpr);
+                expr is BlockExpr || expr is CallExpr || expr is FuncExpr);
 
             switch (expr)
             {
@@ -254,10 +306,12 @@ namespace Scrippy
                     return evaluateAssign(assign);
                 case IncrExpr incr:
                     return evaluateIncr(incr);
-                case ReadExpr read:
-                    return evaluateRead(read);
                 case BlockExpr block:
                     return evaluateBlock(block);
+                case CallExpr call:
+                    return evaluateCall(call);
+                case FuncExpr func:
+                    return evaluateFunc(func);
             }
 
             throw new NotImplementedException();
@@ -268,7 +322,7 @@ namespace Scrippy
             Token t = binary.op;
             Debug.Assert(t.type == TokenType.Plus || t.type == TokenType.Minus || t.type == TokenType.Div ||
                 t.type == TokenType.Mod || t.type == TokenType.Mult || t.type == TokenType.Power ||
-                t.type == TokenType.More || t.type == TokenType.MoreEQ || t.type == TokenType.Less || t.type == TokenType.LessEQ ||t.type == TokenType.Spaceship ||
+                t.type == TokenType.More || t.type == TokenType.MoreEQ || t.type == TokenType.Less || t.type == TokenType.LessEQ || t.type == TokenType.Spaceship ||
                 t.type == TokenType.Equal || t.type == TokenType.NotEQ || t.type == TokenType.RefEQ || t.type == TokenType.Match || t.type == TokenType.NotMatch ||
                 t.type == TokenType.And || t.type == TokenType.Or || t.type == TokenType.Elvis || t.type == TokenType.NullCoalesce);
 
@@ -328,7 +382,6 @@ namespace Scrippy
                     throw error(binary, $"Unsupported operand for subtraction: {left.getTypeName()}, {right.getTypeName()}");
                 case TokenType.Mult:
                     if (!(right is NumValue nr3)) { throw error(binary, $"Unsupported operand for multiplication: {left.getTypeName()}, {right.getTypeName()}"); }
-                    if (left is DictValue d) { return d * nr3; }
                     if (left is ArrValue al3) { return al3 * nr3; }
                     if (left is NumValue nl3) { return nl3 * nr3; }
                     if (left is StrValue s) { return s * nr3; }
@@ -382,10 +435,10 @@ namespace Scrippy
                     if (left is NumValue && right is NumValue) { return (BoolValue) left.Equals(right); } //value types
                     return (BoolValue) ReferenceEquals(left, right); //for bool & null are interned, all bools/nulls point to same
                 case TokenType.Match:
-                    if (!(right is TypeValue t)) { throw error(binary, "Right operand must be a type value"); }
+                    if (!(right is TypeValue)) { throw error(binary, "Right operand must be a type value"); }
                     return (BoolValue) new TypeValue(left).Equals(right);
                 case TokenType.NotMatch:
-                    if (!(right is TypeValue t2)) { throw error(binary, "Right operand must be a type value"); }
+                    if (!(right is TypeValue)) { throw error(binary, "Right operand must be a type value"); }
                     return (BoolValue) !new TypeValue(left).Equals(right);
             }
 
@@ -467,11 +520,11 @@ namespace Scrippy
             throw new NotImplementedException();
         }
 
-
         private Value evaluateAssign(AssignExpr assign)
         {
             Value newValue = evaluate(assign.newValue);
-            environment.assign(assign.name.source, newValue);
+            try { environment.assign(assign.name.source, newValue); }
+            catch (Exception e) { throw error(assign, e.Message); }
             return newValue;
         }
 
@@ -480,19 +533,22 @@ namespace Scrippy
             Token t = incr.incrType;
             Debug.Assert(t.type == TokenType.Increment || t.type == TokenType.Decrement);
             string varName = incr.name.source;
-            Value name = environment[varName];
+            Value name;
+            try { name = environment[varName]; }
+            catch (KeyNotFoundException k) { throw error(incr, k.Message); }
 
             if (incr.isPost)
             {
-                switch(t.type)
+                Value orig = name.clone();
+                switch (t.type)
                 {
                     case TokenType.Increment:
-                        if (name is NumValue n) { n++; environment.assign(varName, n); return name; }
+                        if (name is NumValue n) { n++; environment.assign(varName, n); return orig; }
                         throw error(incr, $"Unsupported type for postfix increment: {name.getTypeName()}");
                     case TokenType.Decrement:
-                        if (name is NumValue n2) { n2--; environment.assign(varName, n2); return name; }
-                        else if (name is StrValue s2) { s2--; environment.assign(varName, s2); return name; }
-                        else if (name is ArrValue a2) { Value orig = a2.clone(); a2--; environment.assign(varName, a2); return orig; }
+                        if (name is NumValue n2) { n2--; environment.assign(varName, n2); return orig; }
+                        else if (name is StrValue s2) { s2--; environment.assign(varName, s2); return orig; }
+                        else if (name is ArrValue a2) { a2--; environment.assign(varName, a2); return orig; }
                         throw error(incr, $"Unsupported type for postfix decrement: {name.getTypeName()}");
                 }
                 throw new NotImplementedException();
@@ -517,15 +573,14 @@ namespace Scrippy
         private Value evaluateTernary(TernaryExpr ternary)
         {
             Token main = ternary.mainOp; Token side = ternary.sideOp;
-            Debug.Assert((main.type == TokenType.TernCond && side.type == TokenType.Colon) ||
-                (main.type == TokenType.Range && side.type == TokenType.Colon));
+            Debug.Assert(main.type == TokenType.TernCond && side.type == TokenType.Colon);
 
             Value condition = evaluate(ternary.left);
             if (main.type == TokenType.TernCond && side.type == TokenType.Colon) //lazy
             {
                 return condition.isTruthy() ? evaluate(ternary.mid) : evaluate(ternary.right);
             }
-            throw new NotImplementedException($"Add range pls");
+            throw new NotImplementedException();
         }
 
         private Value evaluateGrouping(GroupingExpr grouping) { return evaluate(grouping.expr); }
@@ -558,8 +613,8 @@ namespace Scrippy
             {
                 Value key = evaluate(kvp.Key);
                 Value value = evaluate(kvp.Value);
-                if (!key.isHashable()) { throw error(kvp.Key, $"Key {key.ToString()} is not hashable, cannot be used as a dictionary key"); }
-                if (values.ContainsKey(key)) { throw error(kvp.Key, $"Duplicate key {key.ToString()} found in dictionary"); }
+                if (!key.isHashable()) { throw error(kvp.Key, $"Key {key} is not hashable, cannot be used as a dictionary key"); }
+                if (values.ContainsKey(key)) { throw error(kvp.Key, $"Duplicate key {key} found in dictionary"); }
                 values.Add(key, value);
             }
             return new DictValue(values);
@@ -570,16 +625,9 @@ namespace Scrippy
             try
             {
                 Value v = environment[var.name.source];
-                if (v == null) { throw error(var, $"Variable {var.name.source} has not been initialized"); }
-                return v;
+                return v ?? throw error(var, $"Variable {var.name.source} has not been initialized");
             }
             catch (KeyNotFoundException) { throw error(var, $"Variable {var.name.source} has not been declared"); }
-        }
-
-        private Value evaluateRead(ReadExpr read)
-        {
-            string input = Console.ReadLine();
-            return new StrValue(input);
         }
 
         private Value evaluateBlock(BlockExpr block)
@@ -593,6 +641,73 @@ namespace Scrippy
             }
             finally { environment = oldEnv; }
         }
+
+        private Value evaluateCall(CallExpr call)
+        {
+            Value caller = evaluate(call.caller);
+            if (!(caller is FuncValue || caller is NativeFuncValue || caller is TypeValue)) { throw error(call.caller, $"Caller must evaluate to a function, got {caller.getTypeName()}"); }
+            List<Value> args = new List<Value>();
+            int argLength = 0;
+            foreach (Expr e in call.arguments) //only empty returns + _ will return nul -> uninitialized vars will throw exception in evaluateVar
+            {
+                if (e is VarExpr var && var.isPlaceholder) { args.Add(null); continue; }
+                Value v = evaluate(e);
+                if (e is CallExpr c && v == null) { throw error(c, $"This function does not return a value and cannot be supplied as an argument"); }
+                argLength++;
+                args.Add(v);
+            }
+
+            if (caller is FuncValue f)
+            {
+                if (call.arguments.Length > f.arity) { throw error(call, $"Incorrect number of arguments, expected {f.arity} but got {call.arguments.Length}"); }
+                else if (argLength == f.arity) //normal call
+                {
+                    Environment oldEnv = environment;
+                    environment = new Environment(f.closure);
+                    for (int i = 0; i < args.Count; i++) { environment.define(f.token(i).source, args[i]); }
+                    try { for (int i = 0; i < f.length; i++) { execute(f.statement(i)); } }
+                    catch (Return r) { return r.value; }
+                    finally { environment = oldEnv; }
+                    return null;
+                }
+                else if (argLength < f.arity) //currying
+                {
+                    Environment partialClosure = new Environment(f.closure);
+                    Dictionary<string, Value> boundArgs = f.curriedArgs;
+                    bool[] bound = new bool[f.arity]; //starts off all false
+                    for (int i = 0; i < args.Count; i++)
+                    {
+                        if (args[i] != null)
+                        {
+                            partialClosure.define(f.token(i).source, args[i]);
+                            bound[i] = true;
+                            boundArgs.Add(f.token(i).source, args[i]);
+                        }
+                    }
+                    List<Token> remainingParams = new List<Token>();
+                    for (int i = 0; i < f.arity; i++) { if (!bound[i]) { remainingParams.Add(f.token(i)); } }
+                    List<Stmt> newBody = new List<Stmt>();
+                    for (int i = 0; i < f.length; i++) { newBody.Add(f.statement(i)); }
+                    return new FuncValue(remainingParams.ToArray(), newBody.ToArray(), partialClosure, boundArgs);
+                }
+            }
+            else if (caller is NativeFuncValue n)
+            {
+                try { return n.call(args.ToArray()); }
+                catch (Exception e) { throw error(call, e.Message); } //if wrong num of args
+            }
+            else if (caller is TypeValue t)
+            {
+                if (call.arguments.Length != 1 || argLength != 1 || args[0] == null) { throw error(call, "Only 1 argument expected in type casts"); }
+                try { return args[0].castTo(t); }
+                catch (Exception e) { throw error(call, e.Message); }
+            }
+
+            throw new NotImplementedException(); //wont trigger
+        }
+
+        private Value evaluateFunc(FuncExpr func) { return new FuncValue(func.param, func.body, environment); }
+
         #endregion
 
         #region Errors and Warnings

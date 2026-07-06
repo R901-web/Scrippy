@@ -12,7 +12,7 @@ namespace Scrippy
         public string[] source { get; }
         public DiagnosticLevel severity { get; }
 
-        private Diagnostic(int line, string message, DiagnosticLevel severity) : base(message)
+        protected Diagnostic(int line, string message, DiagnosticLevel severity) : base(message)
         {
             this.lineStart = line;
             this.severity = severity;
@@ -79,7 +79,6 @@ namespace Scrippy
             return hash;
         }
     }
-
 
     public static class DiagnosticHandler
     {

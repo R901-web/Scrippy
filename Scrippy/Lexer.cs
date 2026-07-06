@@ -56,7 +56,7 @@ namespace Scrippy
                 case ']': return token(TokenType.RSqBrac);
                 case '(': return token(TokenType.LParen);
                 case ')': return token(TokenType.RParen);
-                case '~': return token(TokenType.Range);
+                case '~': return token(TokenType.Rest);
                 case '.': return token(TokenType.Access);
                 case ' ': return null;
                 case '\r': return null;
@@ -67,6 +67,7 @@ namespace Scrippy
                 case '-':
                     if (match('-')) { return token(TokenType.Decrement); }
                     else if (match('=')) { return token(TokenType.MinusAssign); }
+                    else if (match('>')) { return token(TokenType.Lambda); }
                     else { return token(TokenType.Minus); }
                 case '+':
                     if (match('+')) { return token(TokenType.Increment); }
@@ -95,7 +96,6 @@ namespace Scrippy
                 case '<':
                     if (match('=')) { return token(TokenType.LessEQ); }
                     else if (match('>')) { return token(TokenType.Spaceship); }
-                    else if (match('<')) { return token(TokenType.In); }
                     else { return token(TokenType.Less); }
                 case '>':
                     if (match('=')) { return token(TokenType.MoreEQ); }
@@ -367,8 +367,7 @@ namespace Scrippy
             Debug.Assert((outer == '"' && inner == '\'') || (outer == '\'' && inner == '"'));
 
             StringBuilder sb = new StringBuilder();
-
-            Func<char, char, bool> isCloseQuote = delegate (char c1, char c2) { return c1 == inner && c2 == outer; };
+            bool isCloseQuote(char c1, char c2) { return c1 == inner && c2 == outer; }
 
             while (!isEnd() && !isCloseQuote(peek(), peekNext()))
             {
