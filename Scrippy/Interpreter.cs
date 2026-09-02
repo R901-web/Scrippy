@@ -26,6 +26,15 @@ namespace Scrippy
             }
         }
 
+        public Value this[string key, int distance]
+        {
+            get
+            {
+                Environment env = ancestor(distance);
+                return env[key];
+            }
+        }
+
         public void define(string key, Value value)
         {
             if (values.ContainsKey(key)) { throw new Exception($"Variable {key} has already been declared"); }
@@ -41,39 +50,65 @@ namespace Scrippy
             throw new Exception($"Variable {key} has not been declared");
         }
 
+        public void assignAt(string key, Value value, int distance)
+        {
+            Environment env = ancestor(distance);
+            env.assign(key, value);
+        }
+
         public void defineConst(string key, Value value)
         {
             if (constants.ContainsKey(key)) { throw new Exception($"Constant {key} has already been declared"); }
             if (values.ContainsKey(key)) { throw new Exception($"Variable {key} has already been declared"); }
             constants[key] = value;
         }
+
+        private Environment ancestor(int distance)
+        {
+            Environment env = this;
+            for (int i = 0; i < distance; i++)
+            {
+                if (env.parent == null) { throw new Exception($"No ancestor environment at distance {distance}"); }
+                env = env.parent;
+            }
+            return env;
+        }
     }
 
     public class Return : Diagnostic
     {
         public Value value { get; }
-        public Return(Diagnostic d, Value value) : base(d.lineStart, d.Message, d.severity)
-        {
-            this.value = value;
-        }
+        public Return(Diagnostic d, Value value) : base(d.lineStart, d.Message, d.severity) { this.value = value; }
+    }
+
+    public class Control : Diagnostic
+    {
+        public bool isBreak { get; }
+        public Control(Diagnostic d, bool isBreak) : base(d.lineStart, d.Message, d.severity) { this.isBreak = isBreak; }
     }
 
     public class Interpreter
     {
         public Stmt[] program { get; }
 
+        private Dictionary<Token, int> depthMap = new Dictionary<Token, int>();
         private Environment environment { get; set; }
 
-        public Interpreter(Stmt[] program)
+        private Random rand = new Random();
+
+        public Interpreter(Stmt[] program, Dictionary<Token, int> depthMap)
         {
             this.program = program;
+            this.depthMap = depthMap;
             environment = new Environment(); //global scope
+
             environment.defineConst("clone", new NativeFuncValue(
                 delegate (Value[] input)
                 {
                     if (input.Length != 1) { throw new Exception($"Incorrect number of arguments, expected 1 but got {input.Length}"); }
                     return input[0].clone();
                 }, "clone"));
+
             environment.defineConst("read", new NativeFuncValue(
                 delegate (Value[] input)
                 {
@@ -85,6 +120,7 @@ namespace Scrippy
                         return new StrValue(Console.ReadLine()).castTo(t);
                     }
                 }, "read"));
+
             environment.defineConst("write", new NativeFuncValue(
                 delegate (Value[] input)
                 {
@@ -99,11 +135,40 @@ namespace Scrippy
                     }
                     return null;
                 }, "write"));
+
+            environment.defineConst("rand", new NativeFuncValue(
+                delegate (Value[] input)
+                {
+                    if (input.Length != 0 && input.Length != 1 && input.Length != 2) { throw new Exception($"Incorrect number of arguments, expected 0 or 1 or 2 but got {input.Length}"); }
+                    if (input.Length == 0) { return new NumValue(rand.NextDouble()); }
+                    if (input.Length == 1)
+                    {
+                        if (input[0] is NumValue n) { return new NumValue(rand.NextDouble() * (double) n); }
+                        if (input[0] is TypeValue t)
+                        {
+                            if (t.type == typeof(NumValue)) { return new NumValue(rand.NextDouble()); }
+                            if (t.type == typeof(StrValue)) { return new StrValue(((char) rand.Next(0, 256)).ToString()); }
+                            if (t.type == typeof(BoolValue)) { return rand.Next(0, 2) == 0 ? BoolValue.falseInstance : BoolValue.trueInstance; }
+                            throw new Exception($"Unsupported type for random function call: {t.type.Name}");
+                        }
+                    }
+                    if (input.Length == 2)
+                    {
+                        if (!(input[0] is NumValue n1)) { throw new Exception($"First argument must be a number for random function call, got {input[0].getTypeName()}"); }
+                        if (!(input[1] is NumValue n2)) { throw new Exception($"Second argument must be a number for random function call, got {input[1].getTypeName()}"); }
+                        double min = (double) n1;
+                        double max = (double) n2;
+                        if (min > max) { throw new Exception($"First argument must be less than or equal to second argument for random function call, got {min} and {max}"); }
+                        return new NumValue((rand.NextDouble() * (max - min)) + min);
+                    }
+                    return null;
+                }, "rand"));
         }
 
         public void interpretAST()
         {
             try { for (int i = 0; i < program.Length; i++) { execute(program[i]); } }
+            catch (Return) { }
             catch (Diagnostic d) when (d.severity == DiagnosticLevel.ERROR)
             {
                 DiagnosticHandler.add(d);
@@ -116,7 +181,7 @@ namespace Scrippy
         {
             Debug.Assert(stmt is ExprStmt || stmt is VarDeclStmt
                 || stmt is BlockStmt || stmt is ArrDestrStmt || stmt is DictDestrStmt
-                || stmt is IfStmt || stmt is WhileStmt || stmt is KeyStmt || stmt is FuncDeclStmt || stmt is ReturnStmt);
+                || stmt is IfStmt || stmt is WhileStmt || stmt is FuncDeclStmt || stmt is JumpStmt);
 
             switch (stmt)
             {
@@ -141,14 +206,11 @@ namespace Scrippy
                 case WhileStmt w:
                     executeWhile(w);
                     return;
-                case KeyStmt k:
-                    executeKey(k);
-                    return;
                 case FuncDeclStmt f:
                     executeFuncDecl(f);
                     return;
-                case ReturnStmt r:
-                    executeReturn(r);
+                case JumpStmt j:
+                    executeJump(j);
                     return;
             }
             throw new NotImplementedException();
@@ -205,8 +267,8 @@ namespace Scrippy
             foreach (KeyValuePair<Token, Expr> kvp in stmt.names)
             {
                 Token varName = kvp.Key;
-                if (varName.type == TokenType.Underscore) { throw new NotImplementedException(); } //should not trigger
                 Value dictName = evaluate(kvp.Value);
+                if (varName.type == TokenType.Underscore) { continue; } //should not trigger
                 try
                 {
                     if (stmt.isConst) { environment.defineConst(varName.source, v[dictName]); }
@@ -237,28 +299,18 @@ namespace Scrippy
             while (true)
             {
                 Value v = evaluate(stmt.condition);
-                if (!(v is BoolValue b))
-                {
-                    throw error(stmt, $"Boolean value required for while statment, got {v.getTypeName()}");
-                }
+                if (!(v is BoolValue b)) { throw error(stmt, $"Boolean value required for while statment, got {v.getTypeName()}"); }
                 if (!(bool) b) { break; }
                 else
                 {
                     try { execute(stmt.body); }
-                    catch (Diagnostic d) when (d.Message == "Break keyword outside of loop" || d.Message == "Continue keyword outside of loop")
+                    catch (Control c)
                     {
-                        if (d.Message == "Continue keyword outside of loop") { continue; }
-                        else if (d.Message == "Break keyword outside of loop") { break; }
+                        if (c.isBreak) { break; }
                     }
+                    if (stmt.change != null) { execute(stmt.change); }
                 }
             }
-        }
-
-        private void executeKey(KeyStmt stmt)
-        {
-            if (stmt.keyword.type == TokenType.Break) { throw error(stmt, "Break keyword outside of loop"); }
-            else if (stmt.keyword.type == TokenType.Continue) { throw error(stmt, "Continue keyword outside of loop"); }
-            throw new NotImplementedException();
         }
 
         private void executeFuncDecl(FuncDeclStmt stmt)
@@ -268,10 +320,18 @@ namespace Scrippy
             catch (Exception e) { throw error(stmt, e.Message); }
         }
 
-        private void executeReturn(ReturnStmt stmt)
+        private void executeJump(JumpStmt stmt)
         {
-            Value value = stmt.value == null ? null : evaluate(stmt.value);
-            throw new Return(error(stmt, "Return statement outside of method"), value);
+            TokenType type = stmt.keyword.type;
+            if (type == TokenType.Return)
+            {
+                Value value = stmt.value == null ? null : evaluate(stmt.value);
+                throw new Return(error(stmt, "Return statement outside of method"), value);
+            }
+            if (type == TokenType.Break) { throw new Control(error(stmt, "Break statement outside of loop"), true); }
+            if (type == TokenType.Continue) { throw new Control(error(stmt, "Continue statement outside of loop"), false); }
+
+            throw new NotImplementedException();
         }
         #endregion
 
@@ -282,7 +342,7 @@ namespace Scrippy
             Debug.Assert(expr is UnaryExpr || expr is BinaryExpr || expr is TernaryExpr ||
                 expr is LiteralExpr || expr is ArrayExpr || expr is DictExpr ||
                 expr is GroupingExpr || expr is VarExpr || expr is AssignExpr || expr is IncrExpr ||
-                expr is BlockExpr || expr is CallExpr || expr is FuncExpr);
+                expr is BlockExpr || expr is CallExpr || expr is FuncExpr || expr is IndexExpr);
 
             switch (expr)
             {
@@ -312,6 +372,8 @@ namespace Scrippy
                     return evaluateCall(call);
                 case FuncExpr func:
                     return evaluateFunc(func);
+                case IndexExpr index:
+                    return evaluateIndex(index);
             }
 
             throw new NotImplementedException();
@@ -321,10 +383,10 @@ namespace Scrippy
         {
             Token t = binary.op;
             Debug.Assert(t.type == TokenType.Plus || t.type == TokenType.Minus || t.type == TokenType.Div ||
-                t.type == TokenType.Mod || t.type == TokenType.Mult || t.type == TokenType.Power ||
+                t.type == TokenType.Mod || t.type == TokenType.Mult || t.type == TokenType.Trunc || t.type == TokenType.Power ||
                 t.type == TokenType.More || t.type == TokenType.MoreEQ || t.type == TokenType.Less || t.type == TokenType.LessEQ || t.type == TokenType.Spaceship ||
                 t.type == TokenType.Equal || t.type == TokenType.NotEQ || t.type == TokenType.RefEQ || t.type == TokenType.Match || t.type == TokenType.NotMatch ||
-                t.type == TokenType.And || t.type == TokenType.Or || t.type == TokenType.Elvis || t.type == TokenType.NullCoalesce);
+                t.type == TokenType.And || t.type == TokenType.Or || t.type == TokenType.Elvis || t.type == TokenType.NullCoalesce || t.type == TokenType.In);
 
             try
             {
@@ -336,12 +398,14 @@ namespace Scrippy
                     case TokenType.Mult:
                     case TokenType.Power:
                     case TokenType.Mod:
+                    case TokenType.Trunc:
                         return evaluateArithmetic(binary);
                     case TokenType.More:
                     case TokenType.MoreEQ:
                     case TokenType.Less:
                     case TokenType.LessEQ:
                     case TokenType.Spaceship:
+                    case TokenType.In:
                         return evaluateComparison(binary);
                     case TokenType.Equal:
                     case TokenType.NotEQ:
@@ -392,6 +456,9 @@ namespace Scrippy
                 case TokenType.Mod:
                     if (left is NumValue nl5 && right is NumValue nr5) { return nl5 % nr5; }
                     throw error(binary, $"Unsupported operand for division: {left.getTypeName()}, {right.getTypeName()}");
+                case TokenType.Trunc:
+                    if (left is NumValue nl7 && right is NumValue nr7) { return new NumValue(Math.Truncate((double) nl7 / (double) nr7)); }
+                    throw error(binary, $"Unsupported operand for truncating division: {left.getTypeName()}, {right.getTypeName()}");
                 case TokenType.Power: //returns NaN when 0^0, complex nums, etc.
                     if (left is NumValue nl6 && right is NumValue nr6) { return (NumValue) Math.Pow((double) nl6, (double) nr6); }
                     throw error(binary, $"Unsupported operand for exponentiation: {left.getTypeName()}, {right.getTypeName()}");
@@ -416,6 +483,10 @@ namespace Scrippy
                     return (BoolValue) (left.CompareTo(right) >= 0);
                 case TokenType.Spaceship:
                     return new NumValue(left.CompareTo(right));
+                case TokenType.In:
+                    if (right is ArrValue a) { return (BoolValue) a.contains(left); }
+                    if (right is DictValue d) { return (BoolValue) d.contains(left); }
+                    throw error(binary, $"Unsupported type for in operator: {right.getTypeName()}");
             }
 
             return null;
@@ -523,51 +594,44 @@ namespace Scrippy
         private Value evaluateAssign(AssignExpr assign)
         {
             Value newValue = evaluate(assign.newValue);
-            try { environment.assign(assign.name.source, newValue); }
-            catch (Exception e) { throw error(assign, e.Message); }
-            return newValue;
+            if (assign.name is VarExpr v)
+            {
+                try { environment.assignAt(v.name.source, newValue, depthMap[v.name]); }
+                catch (Exception e) { throw error(assign, e.Message); }
+                return newValue;
+            }
+            //add for dotExpr and indexExpr
+
+            throw new NotImplementedException();
         }
 
         private Value evaluateIncr(IncrExpr incr)
         {
             Token t = incr.incrType;
             Debug.Assert(t.type == TokenType.Increment || t.type == TokenType.Decrement);
-            string varName = incr.name.source;
-            Value name;
-            try { name = environment[varName]; }
-            catch (KeyNotFoundException k) { throw error(incr, k.Message); }
+            Debug.Assert(incr.name is VarExpr);
+            Value value = evaluate(incr.name);
+            Value orig = incr.isPost ? value.clone() : null;
 
-            if (incr.isPost)
+            switch (t.type)
             {
-                Value orig = name.clone();
-                switch (t.type)
-                {
-                    case TokenType.Increment:
-                        if (name is NumValue n) { n++; environment.assign(varName, n); return orig; }
-                        throw error(incr, $"Unsupported type for postfix increment: {name.getTypeName()}");
-                    case TokenType.Decrement:
-                        if (name is NumValue n2) { n2--; environment.assign(varName, n2); return orig; }
-                        else if (name is StrValue s2) { s2--; environment.assign(varName, s2); return orig; }
-                        else if (name is ArrValue a2) { a2--; environment.assign(varName, a2); return orig; }
-                        throw error(incr, $"Unsupported type for postfix decrement: {name.getTypeName()}");
-                }
-                throw new NotImplementedException();
+                case TokenType.Increment:
+                    if (value is NumValue n) { n++; value = n; break; }
+                    throw error(incr, $"Unsupported type for increment: {value.getTypeName()}");
+                case TokenType.Decrement:
+                    if (value is NumValue n2) { n2--; value = n2; break; }
+                    else if (value is StrValue s2) { s2--; value = s2; break; }
+                    else if (value is ArrValue a2) { a2--; value = a2; break; }
+                    throw error(incr, $"Unsupported type for decrement: {value.getTypeName()}");
+                default: throw new NotImplementedException();
             }
-            else
+
+            if (incr.name is VarExpr v2)
             {
-                switch (t.type)
-                {
-                    case TokenType.Increment:
-                        if (name is NumValue n) { ++n; environment.assign(varName, n); return n; }
-                        throw error(incr, $"Unsupported type for postfix increment: {name.getTypeName()}");
-                    case TokenType.Decrement:
-                        if (name is NumValue n2) { --n2; environment.assign(varName, n2); return n2; }
-                        else if (name is StrValue s2) { --s2; environment.assign(varName, s2); return s2; }
-                        else if (name is ArrValue a2) { --a2; environment.assign(varName, a2); return a2; }
-                        throw error(incr, $"Unsupported type for postfix decrement: {name.getTypeName()}");
-                }
-                throw new NotImplementedException();
+                environment.assignAt(v2.name.source, value, depthMap[v2.name]);
+                return incr.isPost ? orig : value;
             }
+            throw new NotImplementedException();
         }
 
         private Value evaluateTernary(TernaryExpr ternary)
@@ -622,9 +686,11 @@ namespace Scrippy
 
         private Value evaluateVar(VarExpr var)
         {
+            Debug.Assert(depthMap.ContainsKey(var.name));
             try
             {
-                Value v = environment[var.name.source];
+                int depth = depthMap[var.name];
+                Value v = environment[var.name.source, depth];
                 return v ?? throw error(var, $"Variable {var.name.source} has not been initialized");
             }
             catch (KeyNotFoundException) { throw error(var, $"Variable {var.name.source} has not been declared"); }
@@ -707,6 +773,20 @@ namespace Scrippy
         }
 
         private Value evaluateFunc(FuncExpr func) { return new FuncValue(func.param, func.body, environment); }
+
+        private Value evaluateIndex(IndexExpr index)
+        {
+            Value obj = evaluate(index.obj);
+            Value id = evaluate(index.index);
+            if (!(obj is ArrValue || obj is DictValue)) { throw error(index.obj, $"Object must be an array or dictionary for indexing, got {obj.getTypeName()}"); }
+            try
+            {
+                if (obj is ArrValue a) { return a[id]; }
+                else if (obj is DictValue d) { return d[id]; }
+            }
+            catch (Exception e) { throw error(index, e.Message); }
+            throw new Exception();
+        }
 
         #endregion
 

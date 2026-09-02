@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 
 
 namespace Scrippy
@@ -43,20 +42,23 @@ namespace Scrippy
      * equality (L) -> match ( ( "==" | "!=" | ":=" ) match )*
      * match (L) ->  compare ( ( "::" | "!: ) pattern )*
      * comparison (L) -> spaceship ( ( ">" | ">=" | "<" | "<=" ) spaceship )*
-     * spaceship (L) -> pipe ( "<>" pipe )*
+     * spaceship (L) -> in ( "<>" in )*
+     * in (L) -> pipe ( "|>" pipe )*
      * pipe (L) -> term ( ">>" term )*
      * term (L) -> factor ( ( "-" | "+" ) factor )*
-     * factor (L) -> power ( ( "/" | "*" | "%" ) power )*
+     * factor (L) -> power ( ( "/" | "*" | "%" | "$" ) power )*
      * power (R) -> unary ( "^" power )?
      * unary (R) -> ( "!" | "-" | "+" ) unary | prefix 
      * prefix (R) -> ( "++" | "--" )* postfix
      * postfix (L) -> call ( "++" | "--" )*
-     * call (L) -> primary ( "(" ( expression ( "," expression )* )? ")" )*
+     * call (L) -> primary ( "(" ( expression ( "," expression )* )? ")" | "[" expression "]" )* 
      * 
      * primary -> NUMBER | STRING | BOOL | "null" | "(" expression ")" | ID | "[" "]" | "[" ":" "]" | "_"
      *            "[" expression ("," expression)* "]" | "[" expression ":" expression ("," expression ":" expression)* "]" 
      *            "func" "(" ( ID ( "," ID )* )? ")" blockStmt | ID "->" expression | "func" "(' ( ID ( "," ID )* )? ")" "->" expression
      */
+
+#warning add indexing for collections -> WHAT ABOUT SETTING
 
 #warning implement ref keyword + default values/variable num of params -> param order must be: required -> default -> param (only 1) -> what about named args
 #warning for params keyword -> change to ~? also for var destructuring e.g. var [a, b, ~ c] = [1,2,3,4,5] and func f(a, b, ~ c) {}
@@ -68,10 +70,6 @@ namespace Scrippy
 
         private int current = 0;
         private int hiddenVar = 0;
-
-#warning move to resolver -> also semantic analysis like is in var destr, incr/decr, if return is in method decl + length of destr, has placeholder in pipe + break/cont not in loop + underscore
-#warning for assign/incr/decr -> what about a[0]++? or a.b++? or a.b = 5; -> need store expr instead of token
-        private int loopDepth = 0;
 
         public Parser(Token[] tokens)
         {
@@ -97,7 +95,6 @@ namespace Scrippy
             catch (Diagnostic d) when (d.severity == DiagnosticLevel.ERROR)
             {
                 synchronize();
-                loopDepth = 0;
                 DiagnosticHandler.add(d);
                 return null;
             }
@@ -110,15 +107,16 @@ namespace Scrippy
 
             if (match(TokenType.LSqBrac)) { return parseArrDestr(lineStart, isConst); } //var [x, y] = [5, 5]; or const [x, y] = [5, 5];
 
-            if (!match(TokenType.Identifier)) { throw error(peek(), "Identifier expected in variable declaration"); }
-            List<Token> names = new List<Token>() { prev() };
+            Expr first = parseTernary();
+            if (!(first is VarExpr v)) { throw error(peek(), "Identifier expected in variable declaration"); }
+            List<Token> names = new List<Token>() { v.name };
             while (match(TokenType.Comma))
             {
-                if (!match(TokenType.Identifier)) { throw error(peek(), "Identifier expected in variable declaration"); }
-                names.Add(prev());
+                Expr next = parseTernary();
+                if (!(next is VarExpr v2)) { throw error(peek(), "Identifier expected in variable declaration"); }
+                names.Add(v2.name);
             }
             Expr initializer = null;
-            if (isConst && peek().type != TokenType.Assign) { throw error(peek(), "Missing initializer in constant declaration"); } //const must be initialized
             if (match(TokenType.Assign)) { initializer = parseExpr(); }
             if (!match(TokenType.Semicolon)) { throw error(peek(), "Missing ';' at end of statement"); }
             return new VarDeclStmt(names.ToArray(), initializer, isConst, lineStart, prev().lineEnd);
@@ -127,15 +125,17 @@ namespace Scrippy
         private Stmt parseArrDestr(int lineStart, bool isConst) //var [a, b, c] = ...
         {
             List<Token> names = new List<Token>();
-            if (!match(TokenType.Identifier, TokenType.Underscore)) { throw error(peek(), "Identifier/discard expected in variable declaration"); }
-            names.Add(prev());
+            Expr first = parseTernary();
+            if (!(first is VarExpr v)) { throw error(prev(), "Identifier or discard expected in variable declaration"); }
+            names.Add(v.name);
 
-            if (match(TokenType.Colon) && names[0].type != TokenType.Underscore) { return parseDictDestr(lineStart, isConst, names[0]); }
+            if (match(TokenType.Colon)) { return parseDictDestr(lineStart, isConst, names[0]); }
 
             while (match(TokenType.Comma))
             {
-                if (!match(TokenType.Identifier, TokenType.Underscore)) { throw error(peek(), "Identifier or discard expected in variable declaration"); }
-                names.Add(prev());
+                Expr next = parseTernary();
+                if (!(next is VarExpr v2)) { throw error(prev(), "Identifier or discard expected in variable declaration"); }
+                names.Add(v2.name);
             }
             if (!match(TokenType.RSqBrac)) { throw error(peek(), "Missing right square bracket ']' in variable destructuring"); }
             if (!match(TokenType.Assign)) { throw error(peek(), "Missing initializer in variable destructuring"); }
@@ -152,11 +152,11 @@ namespace Scrippy
             names.Add(first, firstExpr);
             while (match(TokenType.Comma))
             {
-                if (!match(TokenType.Identifier)) { throw error(peek(), "Identifier expected in variable destructuring"); }
-                Token name = prev();
+                Expr nextKey = parseTernary();
+                if (!(nextKey is VarExpr v)) { throw error(prev(), "Identifier or discard expected in variable destructuring"); }
                 if (!match(TokenType.Colon)) { throw error(peek(), "Missing colon in variable destructuring"); }
                 Expr expr = parseExpr();
-                names.Add(name, expr);
+                names.Add(v.name, expr);
             }
             if (!match(TokenType.RSqBrac)) { throw error(peek(), "Missing right square bracket ']' in variable destructuring"); }
             if (!match(TokenType.Assign)) { throw error(peek(), "Missing initializer in variable destructuring"); }
@@ -192,7 +192,7 @@ namespace Scrippy
             else if (bodyStart.type == TokenType.Lambda)
             {
                 Expr returnVal = parseExpr();
-                Stmt returnStmt = new ReturnStmt(returnVal, returnVal.lineStart, returnVal.lineEnd);
+                Stmt returnStmt = new JumpStmt(new Token(TokenType.Return, "return", returnVal.lineStart), returnVal, returnVal.lineStart, returnVal.lineEnd);
                 if (!match(TokenType.Semicolon)) { throw error(peek(), "Missing semicolon at end lambda function declaration"); }
                 return new FuncDeclStmt(name, parameters.ToArray(), new Stmt[] { returnStmt }, lineStart, returnStmt.lineEnd);
             }
@@ -245,19 +245,16 @@ namespace Scrippy
 
         private Stmt parseWhile()
         {
-            loopDepth++;
             int lineStart = prev().lineStart;
             if (!match(TokenType.LParen)) { throw error(peek(), "Missing left parentheses '(' in while statement"); }
             Expr cond = parseExpr();
             if (!match(TokenType.RParen)) { throw error(peek(), "Missing right parentheses ')' in while statement"); }
             Stmt body = parseSimple();
-            loopDepth--;
-            return new WhileStmt(cond, body, lineStart, prev().lineEnd);
+            return new WhileStmt(cond, body, null, lineStart, prev().lineEnd);
         }
 
         private Stmt parseFor()
         {
-            loopDepth++;
             int lineStart = prev().lineStart;
 
             if (!match(TokenType.LParen)) { throw error(peek(), "Missing left parentheses '(' in for statement"); }
@@ -277,13 +274,12 @@ namespace Scrippy
 
             Stmt body = parseSimple();
 
-            if (change != null) { body = new BlockStmt(new Stmt[2] { body, new ExprStmt(change, body.lineStart) }, lineStart, body.lineEnd); }//add the change at end
+            //if (change != null) { body = new BlockStmt(new Stmt[2] { body, new ExprStmt(change, body.lineStart) }, lineStart, body.lineEnd); }//add the change at end
             condition = condition ?? new LiteralExpr(true, lineStart);
 
-            body = new WhileStmt(condition, body, lineStart, prev().lineEnd);
+            body = new WhileStmt(condition, body, new ExprStmt(change, change.lineEnd), lineStart, prev().lineEnd);
 
             if (initializer != null) { body = new BlockStmt(new Stmt[2] { initializer, body }, lineStart, body.lineEnd); } //add initializer at front
-            loopDepth--;
             return body;
         }
 
@@ -291,7 +287,7 @@ namespace Scrippy
         {
             Token key = prev();
             if (!match(TokenType.Semicolon)) { throw error(peek(), "Missing semicolon at end of statement"); }
-            return new KeyStmt(key, key.lineStart, prev().lineEnd);
+            return new JumpStmt(key, key.lineStart, prev().lineEnd);
         }
 
         private Stmt parseSwitch()
@@ -314,7 +310,6 @@ namespace Scrippy
                 Stmt body = parseSimple();
                 cases.Add((pattern, body));
             }
-            if (cases.Count == 0) { DiagnosticHandler.add(warning(prev(), "Empty switch statement")); }
 
             if (!match(TokenType.RBrace)) { throw error(peek(), "Missing right brace '}' in switch statement"); }
             int lineEnd = prev().lineEnd;
@@ -335,11 +330,11 @@ namespace Scrippy
 
         private Stmt parseReturn()
         {
-            int lineStart = prev().lineStart;
+            Token tk = prev();
             Expr value = null;
             if (!peek(TokenType.Semicolon)) { value = parseExpr(); }
             if (!match(TokenType.Semicolon)) { throw error(peek(), "Missing semicolon in return statement"); }
-            return new ReturnStmt(value, lineStart, prev().lineEnd);
+            return new JumpStmt(tk, value, tk.lineStart, prev().lineEnd);
         }
         #endregion
 
@@ -355,18 +350,10 @@ namespace Scrippy
                 TokenType.AndAssign, TokenType.OrAssign, TokenType.FalseAssign
             };
 
-            List<Token> names = new List<Token>();
-            Expr first = parseTernary();
-            if (!(first is VarExpr v1 && !v1.isPlaceholder)) { return first; }
-            names.Add(v1.name);
+            List<Expr> names = new List<Expr>() { parseTernary() };
             int save = current;
-            while (match(TokenType.Comma))
-            {
-                Expr next = parseTernary();
-                if (!(next is VarExpr v2 && !v2.isPlaceholder)) { current = save; return first; }
-                names.Add(v2.name);
-            }
-            if (!match(assignTypes)) { current = save; return first; }
+            while (match(TokenType.Comma)) { names.Add(parseTernary()); }
+            if (!match(assignTypes)) { current = save; return names[0]; }
 
             Token assignType = prev();
             Expr value = parseTernary();
@@ -375,7 +362,7 @@ namespace Scrippy
             hiddenVar++;
             int id = hiddenVar;
             List<Stmt> desugared = new List<Stmt>();
-            Stmt varAssign = new VarDeclStmt(new Token[] { new Token(TokenType.Identifier, $"$assign^var_{id}", first.lineStart) }, value, false, first.lineStart, first.lineEnd);
+            Stmt varAssign = new VarDeclStmt(new Token[] { new Token(TokenType.Identifier, $"$assign^var_{id}", names[0].lineStart) }, value, false, names[0].lineStart, names[0].lineEnd);
             desugared.Add(varAssign);
 
             for (int i = 0; i < names.Count; i++)
@@ -387,23 +374,23 @@ namespace Scrippy
                     case TokenType.Assign:
                         newValue = var; break;
                     case TokenType.PlusAssign:
-                        newValue = new BinaryExpr(new VarExpr(names[i]), new Token(TokenType.Plus, "+", names[i].lineStart), var); break;
+                        newValue = new BinaryExpr(names[i], new Token(TokenType.Plus, "+", names[i].lineStart), var); break;
                     case TokenType.MinusAssign:
-                        newValue = new BinaryExpr(new VarExpr(names[i]), new Token(TokenType.Minus, "-", names[i].lineStart), var); break;
+                        newValue = new BinaryExpr(names[i], new Token(TokenType.Minus, "-", names[i].lineStart), var); break;
                     case TokenType.MultAssign:
-                        newValue = new BinaryExpr(new VarExpr(names[i]), new Token(TokenType.Mult, "*", names[i].lineStart), var); break;
+                        newValue = new BinaryExpr(names[i], new Token(TokenType.Mult, "*", names[i].lineStart), var); break;
                     case TokenType.DivAssign:
-                        newValue = new BinaryExpr(new VarExpr(names[i]), new Token(TokenType.Div, "/", names[i].lineStart), var); break;
+                        newValue = new BinaryExpr(names[i], new Token(TokenType.Div, "/", names[i].lineStart), var); break;
                     case TokenType.ModAssign:
-                        newValue = new BinaryExpr(new VarExpr(names[i]), new Token(TokenType.Mod, "%", names[i].lineStart), var); break;
+                        newValue = new BinaryExpr(names[i], new Token(TokenType.Mod, "%", names[i].lineStart), var); break;
                     case TokenType.PowAssign:
-                        newValue = new BinaryExpr(new VarExpr(names[i]), new Token(TokenType.Power, "^", names[i].lineStart), var); break;
+                        newValue = new BinaryExpr(names[i], new Token(TokenType.Power, "^", names[i].lineStart), var); break;
                     case TokenType.AndAssign:
-                        newValue = new BinaryExpr(new VarExpr(names[i]), new Token(TokenType.And, "&&", names[i].lineStart), var); break;
+                        newValue = new BinaryExpr(names[i], new Token(TokenType.And, "&&", names[i].lineStart), var); break;
                     case TokenType.OrAssign:
-                        newValue = new BinaryExpr(new VarExpr(names[i]), new Token(TokenType.Or, "||", names[i].lineStart), var); break;
+                        newValue = new BinaryExpr(names[i], new Token(TokenType.Or, "||", names[i].lineStart), var); break;
                     case TokenType.FalseAssign:
-                        newValue = new BinaryExpr(new VarExpr(names[i]), new Token(TokenType.Elvis, "?:", names[i].lineStart), var); break;
+                        newValue = new BinaryExpr(names[i], new Token(TokenType.Elvis, "?:", names[i].lineStart), var); break;
                     default:
                         throw error(assignType, "Invalid assign type");
                 }
@@ -448,17 +435,12 @@ namespace Scrippy
         private Expr parseLogical()
         {
             Expr expr = parseEqual();
-            bool hadAnd = false;
-            bool hadOr = false;
             while (match(TokenType.And, TokenType.Or))
             {
                 Token op = prev();
-                if (op.type == TokenType.And) { hadAnd = true; }
-                else if (op.type == TokenType.Or) { hadOr = true; }
                 Expr right = parseEqual();
                 expr = new BinaryExpr(expr, op, right);
             }
-            if (hadAnd && hadOr) { DiagnosticHandler.add(warning(prev(), "And and or have the same precedence")); }
             return expr;
         }
 
@@ -516,13 +498,13 @@ namespace Scrippy
 
         private Expr parseCompare()
         {
-            Expr expr = parseSpaceship();
+            Expr expr = parseIn();
             List<Token> ops = new List<Token>();
             List<Expr> exprs = new List<Expr>() { expr };
             while (match(TokenType.More, TokenType.MoreEQ, TokenType.Less, TokenType.LessEQ))
             {
                 ops.Add(prev());
-                exprs.Add(parseSpaceship());
+                exprs.Add(parseIn());
             }
             if (ops.Count == 0) { if (exprs.Count != 1) { throw new Exception(); } return expr; }
             else if (ops.Count == 1) { return new BinaryExpr(exprs[0], ops[0], exprs[1]); } //normal comparison e.g. a < b
@@ -547,6 +529,18 @@ namespace Scrippy
             }
 
             return new BlockExpr(varAssigns.ToArray(), value);
+        }
+
+        private Expr parseIn()
+        {
+            Expr expr = parseSpaceship();
+            while (match(TokenType.In))
+            {
+                Token op = prev();
+                Expr right = parseSpaceship();
+                expr = new BinaryExpr(expr, op, right);
+            }
+            return expr;
         }
 
         private Expr parseSpaceship()
@@ -588,7 +582,7 @@ namespace Scrippy
         private Expr parseFactor()
         {
             Expr expr = parsePower();
-            while (match(TokenType.Mult, TokenType.Div, TokenType.Mod))
+            while (match(TokenType.Mult, TokenType.Div, TokenType.Mod, TokenType.Trunc))
             {
                 Token op = prev();
                 Expr right = parsePower();
@@ -626,17 +620,15 @@ namespace Scrippy
             while (match(TokenType.Increment, TokenType.Decrement)) { ops.Add(prev()); }
             Expr right = parsePostfix();
             if (ops.Count == 0) { return right; }
-            if (!(right is VarExpr v && !v.isPlaceholder)) { throw error(prev(), "Invalid increment/decrement target"); }
-
-            if (ops.Count == 1) { return new IncrExpr(v.name, ops[0], false); }
+            if (ops.Count == 1) { return new IncrExpr(right, ops[0], false); }
 
             List<Stmt> desugared = new List<Stmt>();
             for (int i = ops.Count - 1; i >= 0; i--)
             {
-                Expr incr = new IncrExpr(v.name, ops[i], false);
+                Expr incr = new IncrExpr(right, ops[i], false);
                 desugared.Add(new ExprStmt(incr, ops[i].lineEnd));
             }
-            return new BlockExpr(desugared.ToArray(), v);
+            return new BlockExpr(desugared.ToArray(), right);
         }
 
         private Expr parsePostfix()
@@ -645,9 +637,8 @@ namespace Scrippy
             List<Token> ops = new List<Token>();
             while (match(TokenType.Increment, TokenType.Decrement)) { ops.Add(prev()); }
             if (ops.Count == 0) { return left; }
-            if (!(left is VarExpr v && !v.isPlaceholder)) { throw error(prev(), "Invalid increment/decrement target"); }
 
-            if (ops.Count == 1) { return new IncrExpr(v.name, ops[0], true); }
+            if (ops.Count == 1) { return new IncrExpr(left, ops[0], true); }
 
             List<Stmt> desugared = new List<Stmt>();
             hiddenVar++;
@@ -657,7 +648,7 @@ namespace Scrippy
             desugared.Add(variableAssign);
             for (int i = 0; i < ops.Count; i++)
             {
-                Expr incr = new IncrExpr(v.name, ops[i], true);
+                Expr incr = new IncrExpr(left, ops[i], true);
                 desugared.Add(new ExprStmt(incr, ops[i].lineEnd));
             }
             return new BlockExpr(desugared.ToArray(), new VarExpr(new Token(TokenType.Identifier, $"$incr^var_{id}", ops[ops.Count - 1].lineStart)));
@@ -666,23 +657,30 @@ namespace Scrippy
         private Expr parseCall()
         {
             Expr expr = parsePrimary();
-            while (match(TokenType.LParen))
+            while (match(TokenType.LParen, TokenType.LSqBrac))
             {
-                List<Expr> args = new List<Expr>();
-
-                while (!match(TokenType.RParen) && !isEnd())
+                if (prev().type == TokenType.LParen)
                 {
-                    args.Add(parseExpr());
-                    if (!match(TokenType.Comma) && !peek(TokenType.RParen)) { throw error(peek(), "Comma expected in call expression"); }
-                }
-                if (isEnd()) { throw error(peek(), "Missing right parentheses ')' in call expression"); }
+                    List<Expr> args = new List<Expr>();
 
-                expr = new CallExpr(expr, args.ToArray(), prev().lineEnd);
+                    while (!match(TokenType.RParen) && !isEnd())
+                    {
+                        args.Add(parseExpr());
+                        if (!match(TokenType.Comma) && !peek(TokenType.RParen)) { throw error(peek(), "Comma expected in call expression"); }
+                    }
+                    if (isEnd()) { throw error(peek(), "Missing right parentheses ')' in call expression"); }
+                    expr = new CallExpr(expr, args.ToArray(), prev().lineEnd);
+                }
+                else if (prev().type == TokenType.LSqBrac)
+                {
+                    Expr index = parseExpr();
+                    if (!match(TokenType.RSqBrac)) { throw error(peek(), "Missing right square bracket ']' in indexing expression"); }
+                    expr = new IndexExpr(expr, index, prev().lineEnd);
+                }
             }
             return expr;
         }
 
-#warning make _ desugar into an anonymous func? e.g. _ + 1 desugars to x -> x + 1
         private Expr parsePrimary()
         {
             //literals
@@ -710,7 +708,7 @@ namespace Scrippy
                 if (match(TokenType.Lambda))
                 {
                     Expr returnVal = parseExpr();
-                    Stmt returnStmt = new ReturnStmt(returnVal, returnVal.lineStart, returnVal.lineEnd);
+                    Stmt returnStmt = new JumpStmt(new Token(TokenType.Return, "return", returnVal.lineStart), returnVal, returnVal.lineStart, returnVal.lineEnd);
                     return new FuncExpr(new Token[1] { id }, new Stmt[1] { returnStmt }, id.lineStart, prev().lineEnd);
                 }
                 return new VarExpr(id);
@@ -815,7 +813,7 @@ namespace Scrippy
             else if (bodyStart.type == TokenType.Lambda)
             {
                 Expr returnVal = parseExpr();
-                Stmt returnStmt = new ReturnStmt(returnVal, returnVal.lineStart, returnVal.lineEnd);
+                Stmt returnStmt = new JumpStmt(new Token(TokenType.Return, "return", returnVal.lineStart), returnVal, returnVal.lineStart, returnVal.lineEnd);
                 return new FuncExpr(parameters.ToArray(), new Stmt[] { returnStmt }, lineStart, prev().lineEnd);
             }
 

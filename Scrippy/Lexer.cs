@@ -56,6 +56,7 @@ namespace Scrippy
                 case ']': return token(TokenType.RSqBrac);
                 case '(': return token(TokenType.LParen);
                 case ')': return token(TokenType.RParen);
+                case '$': return token(TokenType.Trunc);
                 case '~': return token(TokenType.Rest);
                 case '.': return token(TokenType.Access);
                 case ' ': return null;
@@ -92,6 +93,7 @@ namespace Scrippy
                 case '|':
                     if (match('|')) { return token(TokenType.Or); }
                     else if (match('=')) { return token(TokenType.OrAssign); }
+                    else if (match('>')) { return token(TokenType.In); }
                     else { return token(TokenType.PatOr); }
                 case '<':
                     if (match('=')) { return token(TokenType.LessEQ); }

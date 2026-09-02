@@ -16,6 +16,7 @@ namespace Scrippy
         {
             this.lineStart = line;
             this.severity = severity;
+            this.source = new string[] { Program.lines[line - 1] }; //default to the line in the source code
         }
 
         public Diagnostic(int lineStart, string source, string message, DiagnosticLevel severity) : this(lineStart, message, severity)

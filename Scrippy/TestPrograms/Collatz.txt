@@ -1,0 +1,16 @@
+﻿var start = rand(1, 1E5) $ 1;
+var steps, max = 0;
+
+write("Sequence for " + start + ": ");
+write(start, false);
+while (start != 1) {
+	if (start % 2 == 0) { start /= 2; }
+	else { start = 3 * start + 1; }
+	
+	steps++;
+	write(" -> " + start, false);
+	if (start > max) { max = start; }
+}
+write("\n");
+write("Steps: " + steps);
+write("Max: " + max);

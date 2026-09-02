@@ -71,16 +71,16 @@ namespace Scrippy
                 case IncrExpr ie:
                     return $"{ind}IncrExpr\n" +
                     $"{ind}{{\n" +
-                    $"{ind}    Name: {ie.name.source}\n" +
+                    $"{stringify(ie.name, indent + 1)}\n" +
                     $"{ind}    Type: {ie.incrType.type}\n" +
                     $"{ind}    Position: {(ie.isPost ? "Postfix" : "Prefix")}\n" +
                     $"{ind}}}";
                 case AssignExpr ae:
                     return $"{ind}AssignExpr\n" +
                     $"{ind}{{\n" +
-                    $"{ind}    Name: {ae.name.source}\n" +
+                    $"{stringify(ae.name, indent + 1)}\n" +
                     $"{stringify(ae.newValue, indent + 1)}\n" +
-                    $"{ind}}}\n";
+                    $"{ind}}}";
                 case BlockExpr b:
                     string s4 = $"{ind}BlockExpr\n" +
                     $"{ind}{{\n";
@@ -102,6 +102,12 @@ namespace Scrippy
                     foreach (Stmt st in f.body) { s6 += stringify(st, indent + 1) + "\n"; }
                     s6 += $"{ind}}}\n";
                     return s6;
+                case IndexExpr i2:
+                    return $"{ind}IndexExpr\n" +
+                    $"{ind}{{\n" +
+                    $"{stringify(i2.obj, indent + 1)}\n" +
+                    $"{stringify(i2.index, indent + 1)}\n" +
+                    $"{ind}}}";
 
             }
             return null;
@@ -165,9 +171,8 @@ namespace Scrippy
                     $"{ind}{{\n" +
                     $"{stringify(w.condition, indent + 1)}\n\n" +
                     $"{stringify(w.body, indent + 1)}\n" +
+                    $"{stringify(w.change, indent + 1)}\n" +
                     $"{ind}}}\n";
-                case KeyStmt k:
-                    return $"{ind}KeyStmt {{ {k.keyword.source} }}\n";
                 case FuncDeclStmt f:
                     string s5 = $"{ind}FuncDeclStmt\n" +
                     $"{ind}{{\n" +
@@ -177,10 +182,11 @@ namespace Scrippy
                     foreach (Stmt st in f.body) { s5 += stringify(st, indent + 1) + "\n"; }
                     s5 += $"{ind}}}\n";
                     return s5;
-                case ReturnStmt r:
-                    return $"{ind}ReturnStmt\n" +
+                case JumpStmt j:
+                    return $"{ind}JumpStmt\n" +
                     $"{ind}{{\n" +
-                    $"{(r.value == null ? "\n" : stringify(r.value, indent + 1) + "\n")}" +
+                    $"{ind}    Keyword: {j.keyword.source}\n" +
+                    $"{stringify(j.value, indent + 1)}\n" +
                     $"{ind}}}\n";
 
             }

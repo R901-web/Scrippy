@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using System.Linq;
 using System.Text;
 
@@ -184,7 +183,7 @@ namespace Scrippy
 #warning add casting to objects later
         public override Value castTo(TypeValue type)
         {
-            if (type.type == typeof(ArrValue)) 
+            if (type.type == typeof(ArrValue))
             {
                 List<Value> newValues = new List<Value>();
                 Dictionary<Value, Value> sorted = values.OrderBy(kvp => kvp.Key).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
@@ -193,6 +192,17 @@ namespace Scrippy
             }
 
             return base.castTo(type);
+        }
+
+        public bool contains(Value val)
+        {
+            foreach (KeyValuePair<Value, Value> kvp in values)
+            {
+                Dictionary<Value, Value> dict = new Dictionary<Value, Value>() { [kvp.Key] = kvp.Value };
+                Value v = new DictValue(dict);
+                if (v.Equals(val)) { return true; }
+            }
+            return false;
         }
     }
 
@@ -218,6 +228,20 @@ namespace Scrippy
                 if (index < values.Count && index >= 0) { values[index] = value; }
                 else if (index == values.Count) { values.Add(value); }
                 else { throw new Exception($"Index {index} out of bounds for array of length {values.Count}"); }
+            }
+        }
+
+        public Value this[Value index]
+        {
+            get
+            {
+                if (!(index is NumValue n) || !n.isInt()) { throw new Exception($"Index {index} is not an integer, cannot index array"); }
+                return this[(int) n];
+            }
+            set
+            {
+                if (!(index is NumValue n) || !n.isInt()) { throw new Exception($"Index {index} is not an integer, cannot index array"); }
+                this[(int) n] = value;
             }
         }
 
@@ -321,7 +345,7 @@ namespace Scrippy
         {
             if (type.type == typeof(DictValue))
             {
-                foreach(Value v in values)
+                foreach (Value v in values)
                 {
                     if (v is ArrValue a && a.length == 2) { continue; }
                     throw new Exception("All values in an array must be in pairs to cast to dictionary");
@@ -336,6 +360,12 @@ namespace Scrippy
                 return new DictValue(dict);
             }
             return base.castTo(type);
+        }
+
+        public bool contains(Value val)
+        {
+            foreach (Value v in values) { if (v.Equals(val)) { return true; } }
+            return false;
         }
     }
 
@@ -373,10 +403,10 @@ namespace Scrippy
 
         public override Value clone() { return this; } //immutable, can return self
 
-        public override Value castTo(TypeValue type) 
-        { 
+        public override Value castTo(TypeValue type)
+        {
             if (type.type == typeof(NumValue)) { return value ? new NumValue(1) : new NumValue(0); }
-            return base.castTo(type); 
+            return base.castTo(type);
         }
     }
 
@@ -486,15 +516,15 @@ namespace Scrippy
         {
             if (type.type == typeof(NumValue))
             {
-                try 
+                try
                 {
                     double numVal;
-                    if (value[0] == '0' && value[1] == 'x') { numVal = ulong.Parse(value.Substring(2), NumberStyles.HexNumber); }
-                    else if (value[0] == '-' && value[1] == '0' && value[2] == 'x') { numVal = -1 * (double) ulong.Parse(value.Substring(3), NumberStyles.HexNumber); }
-                    else { numVal = double.Parse(value, NumberStyles.AllowDecimalPoint | NumberStyles.AllowExponent); }
+                    if (value.StartsWith("0x")) { numVal = ulong.Parse(value.Substring(2), NumberStyles.HexNumber); }
+                    else if (value.StartsWith("-0x")) { numVal = -1 * (double) ulong.Parse(value.Substring(3), NumberStyles.HexNumber); }
+                    else { numVal = double.Parse(value, NumberStyles.AllowDecimalPoint | NumberStyles.AllowExponent | NumberStyles.AllowLeadingSign); }
                     return new NumValue(numVal);
                 }
-                catch (FormatException) { throw new Exception($"Type {getTypeName()} cannot be cast to type {type.ToString()}"); }
+                catch (FormatException) { throw new Exception($"{value} cannot be cast to type {type.ToString()}"); }
             }
             if (type.type == typeof(ArrValue))
             {
@@ -655,7 +685,7 @@ namespace Scrippy
             for (int i = 0; i < body.Length; i++) { newBody[i] = body[i]; }
             for (int i = 0; i < param.Length; i++) { newParam[i] = param[i]; }
             foreach (KeyValuePair<string, Value> kvp in boundArgs) { newBoundArgs[kvp.Key] = kvp.Value.clone(); }
-            return new FuncValue(newParam, newBody, scope, newBoundArgs); 
+            return new FuncValue(newParam, newBody, scope, newBoundArgs);
         }
         public override bool isTruthy() { return body.Length > 0; }
         public override bool isHashable() { return true; }
@@ -703,8 +733,8 @@ namespace Scrippy
                         foreach (KeyValuePair<Expr, Expr> kvp in d.elements) { dExprs.Add(normalizeExpr(kvp.Key), normalizeExpr(kvp.Value)); }
                         return new DictExpr(dExprs, d.lineStart, d.lineEnd);
                     case VarExpr v: return new VarExpr(new Token(v.name.type, lookUp(v.name.source), v.name.literal, v.name.lineStart));
-                    case AssignExpr a: return new AssignExpr(new Token(a.name.type, lookUp(a.name.source), a.name.literal, a.name.lineStart), normalizeExpr(a.newValue));
-                    case IncrExpr i: return new IncrExpr(new Token(i.name.type, lookUp(i.name.source), i.name.literal, i.name.lineStart), i.incrType, i.isPost);
+                    case AssignExpr a: return new AssignExpr(normalizeExpr(a.name), normalizeExpr(a.newValue));
+                    case IncrExpr i: return new IncrExpr(normalizeExpr(i.name), i.incrType, i.isPost);
                     case BlockExpr b2:
                         newNames.Push(new Dictionary<string, string>());
                         List<Stmt> b2Stmts = new List<Stmt>();
@@ -775,9 +805,7 @@ namespace Scrippy
                         newNames.Pop();
                         return new BlockStmt(bStmts.ToArray(), b.lineStart, b.lineEnd);
                     case IfStmt i: return new IfStmt(normalizeExpr(i.condition), normalizeStmt(i.ifBranch), normalizeStmt(i.elseBranch), i.lineStart, i.lineEnd);
-                    case WhileStmt w2: return new WhileStmt(normalizeExpr(w2.condition), normalizeStmt(w2.body), w2.lineStart, w2.lineEnd);
-                    case KeyStmt k: return new KeyStmt(k.keyword, k.lineStart, k.lineEnd);
-                    case ReturnStmt r: return new ReturnStmt(normalizeExpr(r.value), r.lineStart, r.lineEnd);
+                    case WhileStmt w2: return new WhileStmt(normalizeExpr(w2.condition), normalizeStmt(w2.body), normalizeStmt(w2.change), w2.lineStart, w2.lineEnd);
                     case FuncDeclStmt f:
                         nameNum++;
                         newNames.Peek()[f.name.source] = $"funcDecl^{nameNum}";
@@ -793,6 +821,7 @@ namespace Scrippy
                         foreach (Stmt s3 in f.body) { fStmts.Add(normalizeStmt(s3)); }
                         newNames.Pop();
                         return new FuncDeclStmt(new Token(f.name.type, lookUp(f.name.source), f.name.literal, f.name.lineStart), fNames.ToArray(), fStmts.ToArray(), f.lineStart, f.lineEnd);
+                    case JumpStmt j: return new JumpStmt(j.keyword, normalizeExpr(j.value), j.lineStart, j.lineEnd);
                 }
                 return null;
             }

@@ -34,9 +34,8 @@ namespace Scrippy
      * DictDestrStmt
      * IfStmt
      * WhileStmt
-     * KeyStmt
      * FuncDeclStmt
-     * ReturnStmt
+     * JumpStmt
      */
 
     public class ExprStmt : Stmt
@@ -215,44 +214,26 @@ namespace Scrippy
     public class WhileStmt : Stmt
     {
         public Expr condition { get; }
+        public Stmt change { get; }
         public Stmt body { get; }
 
-        public WhileStmt(Expr condition, Stmt body, int lineStart, int lineEnd) : base(lineStart, lineEnd)
+        public WhileStmt(Expr condition, Stmt body, Stmt change, int lineStart, int lineEnd) : base(lineStart, lineEnd)
         {
             this.condition = condition;
             this.body = body;
+            this.change = change;
         }
         public override bool Equals(Stmt other)
         {
             if (!(other is WhileStmt w)) { return false; }
-            return condition.Equals(w.condition) && body.Equals(w.body);
+            return condition.Equals(w.condition) && body.Equals(w.body) && change == null ? w.change == null : change.Equals(w.change);
         }
         public override int GetHashCode()
         {
             int hash = base.GetHashCode();
             hash = (hash * 31) + condition.GetHashCode();
             hash = (hash * 31) + body.GetHashCode();
-            return hash;
-        }
-    }
-
-    public class KeyStmt : Stmt
-    {
-        public Token keyword { get; }
-
-        public KeyStmt(Token keyword, int lineStart, int lineEnd) : base(lineStart, lineEnd)
-        {
-            this.keyword = keyword;
-        }
-        public override bool Equals(Stmt other)
-        {
-            if (!(other is KeyStmt k)) { return false; }
-            return keyword.type == k.keyword.type;
-        }
-        public override int GetHashCode()
-        {
-            int hash = base.GetHashCode();
-            hash = (hash * 31) + keyword.type.GetHashCode();
+            hash = (hash * 31) + change.GetHashCode();
             return hash;
         }
     }
@@ -287,22 +268,27 @@ namespace Scrippy
         }
     }
 
-    public class ReturnStmt : Stmt
+    public class JumpStmt : Stmt
     {
+        public Token keyword { get; }
         public Expr value { get; }
 
-        public ReturnStmt(Expr value, int lineStart, int lineEnd) : base(lineStart, lineEnd)
+        public JumpStmt(Token keyword, int lineStart, int lineEnd) : base(lineStart, lineEnd) { this.keyword = keyword; }
+        public JumpStmt(Token keyword, Expr value, int lineStart, int lineEnd) : base(lineStart, lineEnd)
         {
+            this.keyword = keyword;
             this.value = value;
         }
         public override bool Equals(Stmt other)
         {
-            if (!(other is ReturnStmt r)) { return false; }
-            return value == null ? r.value == null : value.Equals(r.value);
+            if (!(other is JumpStmt j)) { return false; }
+            if (keyword.type != j.keyword.type) { return false; }
+            return value == null ? j.value == null : value.Equals(j.value);
         }
         public override int GetHashCode()
         {
             int hash = base.GetHashCode();
+            hash = (hash * 31) + keyword.type.GetHashCode();
             hash = (hash * 31) + (value == null ? 0 : value.GetHashCode());
             return hash;
         }

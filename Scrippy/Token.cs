@@ -29,7 +29,7 @@ namespace Scrippy
         //Arithmetic
         Minus, Plus,
         Mult, Div,
-        Power, Mod,
+        Power, Mod, Trunc,
         Increment, Decrement, //x++ and x--
         LParen, RParen,
 
@@ -44,7 +44,7 @@ namespace Scrippy
         Match, NotMatch,
 
         //Other
-        Rest, //~, << e.g. if (x << [1, 2, 3]) {}, for (x << 2 ~ 5) {}
+        Rest, In, //~ and |> e.g. if (x |> [1, 2, 3]) {}
         Elvis, NullCoalesce, //?: and ??
         Access, NullAccess, //. and ?.
         TernCond, Colon, //? in ternary, : for step or else
@@ -114,5 +114,10 @@ namespace Scrippy
 
         //for tokens without literal value
         public Token(TokenType type, string source, int lineStart) : this(type, source, null, lineStart) { }
+
+        public override string ToString()
+        {
+            return DebugTools.stringify(this);
+        }
     }
 }

@@ -1,0 +1,31 @@
+﻿write("Number of pages: ", false);
+const pages = read(num);
+
+write("Offset: ", false);
+const offset = read(num);
+
+write("Front:");
+for (var i = offset + 1; i <= pages; i += 4) {
+    write(i, false);
+    if (i + 1 <= pages) {
+        write(", ", false);
+        write(i + 1, false);
+    }
+    if (i + 4 <= pages) {
+        write(", ", false);
+    }
+}
+
+write();
+
+write("Back:");
+for (var i = offset + 3; i <= pages; i += 4) {
+    write(i, false);
+    if (i + 1 <= pages) {
+        write(", ", false);
+        write(i + 1, false);
+    }
+    if (i + 4 <= pages) {
+        write(", ", false);
+    }
+}

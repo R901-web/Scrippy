@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
@@ -60,9 +61,8 @@ namespace Scrippy
 
             Console.WriteLine();
 
-            /*
             Resolver r = new Resolver(program);
-            r.resolveAST();
+            Dictionary<Token, int> depthMap = r.resolveAST();
 
             if (DiagnosticHandler.hadError)
             {
@@ -70,9 +70,8 @@ namespace Scrippy
                 return;
             }
             if (DiagnosticHandler.hadWarning) { DiagnosticHandler.reportAll(); DiagnosticHandler.clear(); }
-            */
 
-            Interpreter i = new Interpreter(program);
+            Interpreter i = new Interpreter(program, depthMap);
             i.interpretAST();
         }
     }

@@ -246,10 +246,10 @@ namespace Scrippy
 
     public class AssignExpr : Expr
     {
-        public Token name { get; }
+        public Expr name { get; } //varExpr or indexExpr or getExpr
         public Expr newValue { get; }
 
-        public AssignExpr(Token name, Expr newValue) : base(name.lineStart, newValue.lineEnd)
+        public AssignExpr(Expr name, Expr newValue) : base(name.lineStart, newValue.lineEnd)
         {
             this.name = name;
             this.newValue = newValue;
@@ -257,12 +257,12 @@ namespace Scrippy
         public override bool Equals(Expr other)
         {
             if (!(other is AssignExpr a)) { return false; }
-            return name.source == a.name.source && newValue.Equals(a.newValue);
+            return name.Equals(a.name) && newValue.Equals(a.newValue);
         }
         public override int GetHashCode()
         {
             int hash = base.GetHashCode();
-            hash = (hash * 31) + name.source.GetHashCode();
+            hash = (hash * 31) + name.GetHashCode();
             hash = (hash * 31) + newValue.GetHashCode();
             return hash;
         }
@@ -270,11 +270,11 @@ namespace Scrippy
 
     public class IncrExpr : Expr
     {
-        public Token name { get; }
+        public Expr name { get; }
         public Token incrType { get; }
         public bool isPost { get; }
 
-        public IncrExpr(Token name, Token incrType, bool isPost) : base(isPost ? name.lineStart : incrType.lineStart, isPost ? incrType.lineEnd : name.lineEnd)
+        public IncrExpr(Expr name, Token incrType, bool isPost) : base(isPost ? name.lineStart : incrType.lineStart, isPost ? incrType.lineEnd : name.lineEnd)
         {
             this.name = name;
             this.incrType = incrType;
@@ -283,12 +283,12 @@ namespace Scrippy
         public override bool Equals(Expr other)
         {
             if (!(other is IncrExpr i)) { return false; }
-            return name.source == i.name.source && incrType.type == i.incrType.type && isPost == i.isPost;
+            return name.Equals(i.name) && incrType.type == i.incrType.type && isPost == i.isPost;
         }
         public override int GetHashCode()
         {
             int hash = base.GetHashCode();
-            hash = (hash * 31) + name.source.GetHashCode();
+            hash = (hash * 31) + name.GetHashCode();
             hash = (hash * 31) + incrType.type.GetHashCode();
             hash = (hash * 31) + isPost.GetHashCode();
             return hash;
@@ -369,6 +369,29 @@ namespace Scrippy
             int hash = base.GetHashCode();
             foreach (Token t in param) { hash = (hash * 31) + t.source.GetHashCode(); }
             foreach (Stmt s in body) { hash = (hash * 31) + s.GetHashCode(); }
+            return hash;
+        }
+    }
+
+    public class IndexExpr : Expr
+    {
+        public Expr obj { get; }
+        public Expr index { get; }
+        public IndexExpr(Expr obj, Expr index, int lineEnd) : base(obj.lineStart, lineEnd)
+        {
+            this.obj = obj;
+            this.index = index;
+        }
+        public override bool Equals(Expr other)
+        {
+            if (!(other is IndexExpr i)) { return false; }
+            return obj.Equals(i.obj) && index.Equals(i.index);
+        }
+        public override int GetHashCode()
+        {
+            int hash = base.GetHashCode();
+            hash = (hash * 31) + obj.GetHashCode();
+            hash = (hash * 31) + index.GetHashCode();
             return hash;
         }
     }

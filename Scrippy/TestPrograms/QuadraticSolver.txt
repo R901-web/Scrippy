@@ -1,15 +1,11 @@
-﻿func disc(a, b, c) {
-    return b ^ 2 - 4 * a * c;
-}
+﻿func disc(a, b, c) -> b ^ 2 - 4 * a * c;
 
 func solveQuad(a, b, d, plus) {
     var sign = plus ? 1 : -1;
     return (-b + sign * d ^ (1 / 2)) / (2 * a);
 }
 
-func solveLin(a, b) {
-	return -b / a;
-}
+func solveLin(a, b) -> -b / a;
 
 func coeff(eq, n, suffix) {
 	if (n == 0) { return ""; }
