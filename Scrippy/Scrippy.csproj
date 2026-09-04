@@ -62,7 +62,7 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="Scrippy.txt" />
-    <Content Include="TestPrograms\Collatz.txt" />
+    <Content Include="TestPrograms\TicTacToe.txt" />
     <Content Include="TestPrograms\PrintFormatter.txt" />
     <Content Include="TestPrograms\QuadraticSolver.txt" />
   </ItemGroup>

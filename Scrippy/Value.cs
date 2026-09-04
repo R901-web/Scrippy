@@ -467,6 +467,24 @@ namespace Scrippy
         public StrValue(string value) { this.value = value; }
 
         #region Wrapper
+        public StrValue this[int index]
+        {
+            get
+            {
+                if (index < value.Length && index >= 0) { return new StrValue(value[index].ToString()); }
+                else { throw new Exception($"Index {index} out of bounds for string of length {value.Length}"); }
+            }
+        }
+
+        public StrValue this[Value index]
+        {
+            get
+            {
+                if (!(index is NumValue n) || !n.isInt()) { throw new Exception($"Index {index} is not an integer, cannot index string"); }
+                return this[(int) n];
+            }
+        }
+
         public static explicit operator string(StrValue s) { return s.value; }
         public static StrValue operator +(StrValue a, Value b) { return new StrValue(a.value + b.ToString()); }
         public static StrValue operator *(StrValue s, NumValue n)

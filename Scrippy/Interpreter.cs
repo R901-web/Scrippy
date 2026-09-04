@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Reflection;
 
 namespace Scrippy
 {
@@ -600,36 +601,75 @@ namespace Scrippy
                 catch (Exception e) { throw error(assign, e.Message); }
                 return newValue;
             }
-            //add for dotExpr and indexExpr
+            else if (assign.name is IndexExpr i)
+            {
+                try
+                {
+                    Value obj = evaluate(i.obj);
+                    Value id = evaluate(i.index);
+                    if (obj is ArrValue a) { a[id] = newValue; }
+                    else if (obj is DictValue d) { d[id] = newValue; }
+                    else { throw error(assign, $"Unsupported type for index assignment: {obj.getTypeName()}"); }
+                }
+                catch (Exception e) { throw error(assign, e.Message); }
+                return newValue;
+            }
 
             throw new NotImplementedException();
         }
 
         private Value evaluateIncr(IncrExpr incr)
         {
-            Token t = incr.incrType;
-            Debug.Assert(t.type == TokenType.Increment || t.type == TokenType.Decrement);
-            Debug.Assert(incr.name is VarExpr);
-            Value value = evaluate(incr.name);
-            Value orig = incr.isPost ? value.clone() : null;
-
-            switch (t.type)
+            Value incrVal(Value v, TokenType type)
             {
-                case TokenType.Increment:
-                    if (value is NumValue n) { n++; value = n; break; }
-                    throw error(incr, $"Unsupported type for increment: {value.getTypeName()}");
-                case TokenType.Decrement:
-                    if (value is NumValue n2) { n2--; value = n2; break; }
-                    else if (value is StrValue s2) { s2--; value = s2; break; }
-                    else if (value is ArrValue a2) { a2--; value = a2; break; }
-                    throw error(incr, $"Unsupported type for decrement: {value.getTypeName()}");
-                default: throw new NotImplementedException();
+                switch (type)
+                {
+                    case TokenType.Increment:
+                        if (v is NumValue n) { n++; return n; }
+                        throw error(incr, $"Unsupported type for increment: {v.getTypeName()}");
+                    case TokenType.Decrement:
+                        if (v is NumValue n2) { n2--; return n2; }
+                        else if (v is StrValue s2) { s2--; return s2; }
+                        else if (v is ArrValue a2) { a2--; return a2; }
+                        throw error(incr, $"Unsupported type for decrement: {v.getTypeName()}");
+                }
+                throw new NotImplementedException();
             }
 
-            if (incr.name is VarExpr v2)
+            Token t = incr.incrType;
+            Debug.Assert(t.type == TokenType.Increment || t.type == TokenType.Decrement);
+
+            if (incr.name is VarExpr var)
             {
-                environment.assignAt(v2.name.source, value, depthMap[v2.name]);
+                Value value = evaluate(incr.name);
+                Value orig = incr.isPost ? value.clone() : null;
+
+                value = incrVal(value, t.type);
+
+                environment.assignAt(var.name.source, value, depthMap[var.name]);
                 return incr.isPost ? orig : value;
+
+            }
+            else if (incr.name is IndexExpr ind)
+            {
+                try
+                {
+                    Value obj = evaluate(ind.obj);
+                    Value id = evaluate(ind.index);
+                    Value value;
+                    if (obj is ArrValue a) { value = a[id]; }
+                    else if (obj is DictValue d) { value = d[id]; }
+                    else { throw error(incr, $"Unsupported type for index increment: {obj.getTypeName()}"); }
+
+                    Value orig = incr.isPost ? value.clone() : null; 
+                    value = incrVal(value, t.type);
+
+                    if (obj is ArrValue a2) { a2[id] = value; }
+                    else if (obj is DictValue d2) { d2[id] = value; }
+                    else { throw error(incr, $"Unsupported type for index increment: {obj.getTypeName()}"); }
+                    return incr.isPost ? orig : value;
+                }
+                catch (Exception e) { throw error(incr, e.Message); }
             }
             throw new NotImplementedException();
         }
@@ -778,11 +818,12 @@ namespace Scrippy
         {
             Value obj = evaluate(index.obj);
             Value id = evaluate(index.index);
-            if (!(obj is ArrValue || obj is DictValue)) { throw error(index.obj, $"Object must be an array or dictionary for indexing, got {obj.getTypeName()}"); }
             try
             {
                 if (obj is ArrValue a) { return a[id]; }
                 else if (obj is DictValue d) { return d[id]; }
+                else if (obj is StrValue s) { return s[id]; }
+                else { throw error(index.obj, $"Object must be an array, string or dictionary for indexing, got {obj.getTypeName()}"); }
             }
             catch (Exception e) { throw error(index, e.Message); }
             throw new Exception();

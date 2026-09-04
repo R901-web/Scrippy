@@ -191,6 +191,11 @@ namespace Scrippy
                 }
                 catch (Exception e) { error(v, e.Message); }
             }
+            else if (expr.name is IndexExpr i)
+            {
+                resolve(i.obj);
+                resolve(i.index);
+            }
             else { error(expr, "Assignment can only be used on variables"); }
         }
 
@@ -206,6 +211,11 @@ namespace Scrippy
                     if (isConst) { error(expr, $"Cannot increment or decrement constant {v.name.source}"); }
                 }
                 catch (Exception e) { error(v, e.Message); }
+            }
+            else if (expr.name is IndexExpr i)
+            {
+                resolve(i.obj);
+                resolve(i.index);
             }
             else { error(expr, "Increment and decrement can only be used on variables"); }
         }

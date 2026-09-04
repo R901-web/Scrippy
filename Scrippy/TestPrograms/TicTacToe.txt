@@ -1,0 +1,59 @@
+﻿var board = [
+	[" ", " ", " "],
+	[" ", " ", " "],
+	[" ", " ", " "]
+];
+
+func checkWin() {
+	if (board[0][0] == board[1][1] == board[2][2] != " ") { return board[1][1]; }
+	if (board[0][2] == board[1][1] == board[2][0] != " ") { return board[1][1]; }
+	for (var i = 0; i < 3; i++) {
+		if (board[0][i] == board[1][i] == board[2][i] != " ") { return board[1][i]; }
+		if (board[i][0] == board[i][1] == board[i][2] != " ") { return board[i][1]; }
+	}
+	return " ";
+}
+
+func isDraw() { 
+	var hasEmpty = false;
+	for (var x = 0; x < 3; x++) { 
+		for (var y = 0; y < 3; y++) { 
+			if (board[y][x] == " ") { hasEmpty = true; break; }
+		}
+		if (hasEmpty) { break; }
+	}
+	return !hasEmpty && checkWin() == " ";
+}
+
+func printBoard() {
+	write();
+	for (var i = 0; i < 3; i++) {
+		write(board[i]);
+	}
+	write();
+}
+
+func valid(a) -> 1 <= a <= 3 && a % 1 == 0;
+
+var currentPlayer = false;
+printBoard();
+while (checkWin() == " ") {
+	write("Enter x: ", false);
+	var x = read(num);
+	write("Enter y: ", false);
+	var y = read(num);
+	while(!valid(x) || !valid(y) || board[y - 1][x - 1] != " ") {
+		write("Both x and y must be integers from 1 to 3 and the cell must be unoccupied");
+		write("Enter x: ", false);
+		x = read(num);
+		write("Enter y: ", false);
+		y = read(num);
+	}
+	board[y - 1][x - 1] = currentPlayer ? "O" : "X";
+	currentPlayer = !currentPlayer;
+	printBoard();
+	if (isDraw()) { break; }
+}
+
+if (isDraw()) { write("Draw!"); }
+else { write(checkWin() + " Wins!"); }
