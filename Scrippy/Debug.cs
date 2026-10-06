@@ -137,6 +137,7 @@ namespace Scrippy
                     $"{ind}{{\n";
                     s2 += $"{ind}    IsConst: {a.isConst}\n\n";
                     foreach (Token t in a.names) { s2 += $"{ind}    Name: {t.source}\n"; }
+                    if (a.variadic != null) { s2 += $"{ind}    Variadic: {a.variadic.Value.source}\n"; }
                     return s2 +
                     $"\n{stringify(a.initializer, indent + 1)}\n" +
                     $"{ind}}}\n";
