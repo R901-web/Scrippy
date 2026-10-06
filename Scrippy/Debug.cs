@@ -177,7 +177,11 @@ namespace Scrippy
                     string s5 = $"{ind}FuncDeclStmt\n" +
                     $"{ind}{{\n" +
                     $"{ind}    Name: {f.name.source}\n\n";
-                    foreach (Token t in f.param) { s5 += $"{ind}    Param: {t.source}\n"; }
+                    foreach (Token t in f.param) 
+                    { 
+                        s5 += $"{ind}    Param: {t.source}\n"; 
+                        if (f.defValues.ContainsKey(t)) { s5 += $"{ind}    Default: {stringify(f.defValues[t], indent + 1)}\n"; }
+                    }
                     s5 += "\n";
                     foreach (Stmt st in f.body) { s5 += stringify(st, indent + 1) + "\n"; }
                     s5 += $"{ind}}}\n";

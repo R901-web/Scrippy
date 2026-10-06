@@ -5,12 +5,9 @@ using System.Collections.Generic;
 namespace Scrippy
 {
     /*
-    Comma,
-    LSqBrac, RSqBrac,
     ObjType, 
-    Rest, 
     Access, NullAccess, 
-    Pipe, Underscore, 
+    Range
      */
 
     /* GRAMMAR: 
@@ -58,7 +55,7 @@ namespace Scrippy
      *            "func" "(" ( ID ( "," ID )* )? ")" blockStmt | ID "->" expression | "func" "(' ( ID ( "," ID )* )? ")" "->" expression
      */
 
-#warning add indexing for collections -> WHAT ABOUT SETTING
+#warning allow default values for variadic?
 
 #warning implement ref keyword + default values/variable num of params -> param order must be: required -> default -> param (only 1) -> what about named args
 #warning for params keyword -> change to ~? also for var destructuring e.g. var [a, b, ~ c] = [1,2,3,4,5] and func f(a, b, ~ c) {}
@@ -175,26 +172,51 @@ namespace Scrippy
 
             if (!match(TokenType.LParen)) { throw error(peek(), "Missing left parentheses '(' in function declaration"); }
             List<Token> parameters = new List<Token>();
+            Dictionary<Token, Expr> defaultVals = new Dictionary<Token, Expr>();
+            Token? variadic = null;
+            bool hadDefault = false;
+
             while (!match(TokenType.RParen) && !isEnd())
             {
                 if (!match(TokenType.Identifier)) { throw error(peek(), "Identifier expected in function declaration"); }
                 parameters.Add(prev());
+                if (hadDefault && !peek(TokenType.Assign, TokenType.Rest)) { throw error(peek(), "Required parameter cannot follow default parameter in function declaration"); }
+                if (variadic != null) { throw error(peek(), "Variadic parameter must be last in function declaration"); }
+                if (match(TokenType.Assign))
+                {
+                    hadDefault = true;
+                    Expr defaultVal = parseTernary();
+                    defaultVals.Add(parameters[parameters.Count - 1], defaultVal);
+                }
+                else if (match(TokenType.Rest))
+                {
+                    if (variadic != null) { throw error(prev(), "Multiple variadic parameters in function declaration"); }
+                    variadic = parameters[parameters.Count - 1];
+                    parameters.RemoveAt(parameters.Count - 1);
+                    if (match(TokenType.Assign))
+                    {
+                        hadDefault = true;
+                        Expr defaultVal = parseTernary();
+                        defaultVals.Add(variadic.Value, defaultVal);
+                    }
+                }
                 if (!match(TokenType.Comma) && !peek(TokenType.RParen)) { throw error(peek(), "Comma expected in function declaration"); }
             }
             if (isEnd()) { throw error(peek(), "Missing right parentheses ')' in function declaration"); }
             if (!match(TokenType.LBrace, TokenType.Lambda)) { throw error(peek(), "Missing left brace '{' or lambda in function declaration"); }
+
             Token bodyStart = prev();
             if (bodyStart.type == TokenType.LBrace)
             {
                 BlockStmt body = (BlockStmt) parseBlock();
-                return new FuncDeclStmt(name, parameters.ToArray(), body.statements, lineStart, body.lineEnd);
+                return new FuncDeclStmt(name, parameters.ToArray(), body.statements, defaultVals, variadic, lineStart, body.lineEnd);
             }
             else if (bodyStart.type == TokenType.Lambda)
             {
                 Expr returnVal = parseExpr();
                 Stmt returnStmt = new JumpStmt(new Token(TokenType.Return, "return", returnVal.lineStart), returnVal, returnVal.lineStart, returnVal.lineEnd);
                 if (!match(TokenType.Semicolon)) { throw error(peek(), "Missing semicolon at end lambda function declaration"); }
-                return new FuncDeclStmt(name, parameters.ToArray(), new Stmt[] { returnStmt }, lineStart, returnStmt.lineEnd);
+                return new FuncDeclStmt(name, parameters.ToArray(), new Stmt[] { returnStmt }, defaultVals, variadic, lineStart, returnStmt.lineEnd);
             }
             throw new NotImplementedException();
         }

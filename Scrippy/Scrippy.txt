@@ -70,6 +70,7 @@ var f = func(x, y) {}
 var g = ["a": 5, 2: "b", "func1": func(x) {}]
 # destructuring assignments
 var [x, y] = [5, 10]; //for arrays
+var [x, y, z..] = [5, 10, 15, 20, 25];
 var [x: "a", y : "b"] = ["a": 5, "b": 10]; //for dictionary
 
 When a variable is declared but not intialized -> reading/writing from it is runtime error
@@ -158,16 +159,15 @@ for loops need : step portion, otherwise error
 
 	6.5 Others
 		- pipe: x >> y
-		- in: x << y
+		- in: x |> y
 		- range: x ~ y
-		- range with step: x ~ y : z
 		- ternary: x ? y : z
 		- elvis: x ?: y
 		- null check: x ?? y
 		- null access: x ?. y
 		- access: x . y
-		- comment: # x
-		- multiline comment: ## x y z ##
+		- comment: //x
+		- multiline comment: /* x y z */
 
 Operators can be chained e.g.
 if (2 < x < 5) {}
@@ -213,5 +213,3 @@ func b.h(r, s) {
 }
 
 Writing directly to uninitialized field will throw error
-
-Object - Oriented (Class): 

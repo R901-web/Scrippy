@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Reflection;
 
 namespace Scrippy
 {
@@ -316,7 +315,7 @@ namespace Scrippy
 
         private void executeFuncDecl(FuncDeclStmt stmt)
         {
-            Value f = new FuncValue(stmt.param, stmt.body, environment); //shared reference to current env.
+            Value f = new FuncValue(stmt.param, stmt.body, environment, new Dictionary<string, Value>(), stmt.defValues, stmt.variadic); //shared reference to current env.
             try { environment.defineConst(stmt.name.source, f); }
             catch (Exception e) { throw error(stmt, e.Message); }
         }
@@ -661,7 +660,7 @@ namespace Scrippy
                     else if (obj is DictValue d) { value = d[id]; }
                     else { throw error(incr, $"Unsupported type for index increment: {obj.getTypeName()}"); }
 
-                    Value orig = incr.isPost ? value.clone() : null; 
+                    Value orig = incr.isPost ? value.clone() : null;
                     value = incrVal(value, t.type);
 
                     if (obj is ArrValue a2) { a2[id] = value; }
@@ -765,36 +764,91 @@ namespace Scrippy
 
             if (caller is FuncValue f)
             {
-                if (call.arguments.Length > f.arity) { throw error(call, $"Incorrect number of arguments, expected {f.arity} but got {call.arguments.Length}"); }
+                if (argLength > f.arity)
+                {
+                    if (f.variadic != null)
+                    {
+                        List<Value> extras = new List<Value>();
+                        for (int i = f.arity - 1; i < args.Count; i++) { extras.Add(args[i]); }
+                        ArrValue variadicArgs = new ArrValue(extras);
+                        Environment oldEnv = environment;
+                        environment = new Environment(f.closure);
+                        for (int i = 0; i < f.arity - 1; i++) { environment.define(f.token(i).source, args[i]); }
+                        environment.define(f.variadic.Value.source, variadicArgs);
+                        try { for (int i = 0; i < f.length; i++) { execute(f.statement(i)); } }
+                        catch (Return r) { return r.value; }
+                        finally { environment = oldEnv; }
+                        return null;
+
+                    }
+                    else { throw error(call, $"Incorrect number of arguments, expected at most {f.arity} but got {call.arguments.Length}"); }
+                }
                 else if (argLength == f.arity) //normal call
                 {
                     Environment oldEnv = environment;
                     environment = new Environment(f.closure);
-                    for (int i = 0; i < args.Count; i++) { environment.define(f.token(i).source, args[i]); }
+                    for (int i = 0; i < args.Count; i++) 
+                    { 
+                        //even if correct num variadic is always a array
+                        if (f.variadic != null && i == f.arity - 1) { environment.define(f.variadic.Value.source, new ArrValue(new List<Value>() { args[i] })); break; }
+                        environment.define(f.token(i).source, args[i]); 
+                    }
                     try { for (int i = 0; i < f.length; i++) { execute(f.statement(i)); } }
                     catch (Return r) { return r.value; }
                     finally { environment = oldEnv; }
                     return null;
                 }
-                else if (argLength < f.arity) //currying
+                else if (argLength < f.arity)
                 {
-                    Environment partialClosure = new Environment(f.closure);
-                    Dictionary<string, Value> boundArgs = f.curriedArgs;
-                    bool[] bound = new bool[f.arity]; //starts off all false
-                    for (int i = 0; i < args.Count; i++)
+                    if (argLength < f.minArity) //currying
                     {
-                        if (args[i] != null)
+                        Environment partialClosure = new Environment(f.closure);
+                        Dictionary<string, Value> boundArgs = f.curriedArgs;
+                        bool[] bound = new bool[f.arity]; //starts off all false
+                        for (int i = 0; i < args.Count; i++)
                         {
-                            partialClosure.define(f.token(i).source, args[i]);
-                            bound[i] = true;
-                            boundArgs.Add(f.token(i).source, args[i]);
+                            if (args[i] != null)
+                            {
+                                partialClosure.define(f.token(i).source, args[i]);
+                                bound[i] = true;
+                                boundArgs.Add(f.token(i).source, args[i]);
+                            }
                         }
+                        List<Token> remainingParams = new List<Token>();
+                        Dictionary<Token, Expr> defVals = new Dictionary<Token, Expr>();
+                        for (int i = 0; i < f.arity; i++) 
+                        { 
+                            if (f.variadic != null && i == f.arity - 1) { break; }
+                            if (!bound[i]) 
+                            { 
+                                remainingParams.Add(f.token(i));
+                                if (f.defVals.TryGetValue(f.token(i), out Expr val)) { defVals.Add(f.token(i), val); }
+                            } 
+                        }
+                        List<Stmt> newBody = new List<Stmt>();
+                        for (int i = 0; i < f.length; i++) { newBody.Add(f.statement(i)); }
+                        return new FuncValue(remainingParams.ToArray(), newBody.ToArray(), partialClosure, boundArgs, defVals, f.variadic);
                     }
-                    List<Token> remainingParams = new List<Token>();
-                    for (int i = 0; i < f.arity; i++) { if (!bound[i]) { remainingParams.Add(f.token(i)); } }
-                    List<Stmt> newBody = new List<Stmt>();
-                    for (int i = 0; i < f.length; i++) { newBody.Add(f.statement(i)); }
-                    return new FuncValue(remainingParams.ToArray(), newBody.ToArray(), partialClosure, boundArgs);
+                    else //default values
+                    {
+                        Environment oldEnv = environment;
+                        environment = new Environment(f.closure);
+                        for (int i = args.Count; i < f.arity; i++) 
+                        {
+                            if (f.variadic != null && i == f.arity - 1)
+                            {
+                                if (f.defVals.TryGetValue(f.variadic.Value, out Expr val)) { environment.define(f.variadic.Value.source, evaluate(val)); }
+                                else { environment.define(f.variadic.Value.source, new ArrValue(new List<Value>())); }
+                                break;
+                            }
+                            environment.define(f.token(i).source, evaluate(f.defVal(f.token(i)))); 
+                        }
+                        for (int i = 0; i < args.Count; i++) { environment.define(f.token(i).source, args[i]); }
+                        try { for (int i = 0; i < f.length; i++) { execute(f.statement(i)); } }
+                        catch (Return r) { return r.value; }
+                        finally { environment = oldEnv; }
+                        return null;
+                    }
                 }
             }
             else if (caller is NativeFuncValue n)
@@ -812,7 +866,7 @@ namespace Scrippy
             throw new NotImplementedException(); //wont trigger
         }
 
-        private Value evaluateFunc(FuncExpr func) { return new FuncValue(func.param, func.body, environment); }
+        private Value evaluateFunc(FuncExpr func) { return new FuncValue(func.param, func.body, environment, new Dictionary<Token, Expr>()); }
 
         private Value evaluateIndex(IndexExpr index)
         {

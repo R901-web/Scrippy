@@ -61,7 +61,7 @@ namespace Scrippy
             else if (type.type == typeof(BoolValue)) { return (BoolValue) isTruthy(); }
             else if (type.type == this.GetType()) { return clone(); }
 
-            throw new Exception($"Type {getTypeName()} cannot be cast to type {type.ToString()}");
+            throw new Exception($"{getTypeName()} cannot be cast to type {type.ToString()}");
         }
     }
 
@@ -542,7 +542,7 @@ namespace Scrippy
                     else { numVal = double.Parse(value, NumberStyles.AllowDecimalPoint | NumberStyles.AllowExponent | NumberStyles.AllowLeadingSign); }
                     return new NumValue(numVal);
                 }
-                catch (FormatException) { throw new Exception($"{value} cannot be cast to type {type.ToString()}"); }
+                catch (FormatException) { throw new Exception($"\"{value}\" cannot be cast to type {type.ToString()}"); }
             }
             if (type.type == typeof(ArrValue))
             {
@@ -618,23 +618,32 @@ namespace Scrippy
         private readonly Stmt[] body;
         private readonly Environment scope;
         private readonly Dictionary<string, Value> boundArgs;
+        private readonly Dictionary<Token, Expr> defaultVals;
+        private readonly Token? varParam;
 
-        public FuncValue(Token[] param, Stmt[] body, Environment scope) : this(param, body, scope, new Dictionary<string, Value>()) { }
-
-        public FuncValue(Token[] param, Stmt[] body, Environment scope, Dictionary<string, Value> boundArgs)
+        public FuncValue(Token[] param, Stmt[] body, Environment scope, Dictionary<Token, Expr> defaultVals) : this(param, body, scope, new Dictionary<string, Value>(), defaultVals) { }
+        public FuncValue(Token[] param, Stmt[] body, Environment scope, Dictionary<string, Value> boundArgs, Dictionary<Token, Expr> defaultVals) : this(param, body, scope, boundArgs, defaultVals, null) { }
+        public FuncValue(Token[] param, Stmt[] body, Environment scope, Dictionary<string, Value> boundArgs, Dictionary<Token, Expr> defaultVals, Token? varParam)
         {
             this.param = param;
             this.body = body;
             this.scope = scope;
             this.boundArgs = boundArgs;
+            this.defaultVals = defaultVals;
+            this.varParam = varParam;
         }
 
         #region Wrapper
+        public Dictionary<Token, Expr> defVals { get { return defaultVals; } }
+        public Token? variadic { get { return varParam; } }
         public Token token(int index) { return param[index]; }
         public Stmt statement(int index) { return body[index]; }
-        public int arity { get { return param.Length; } }
+        public int maxArity { get { return varParam != null ? int.MaxValue : param.Length; } }
+        public int arity { get { return param.Length + (varParam != null ? 1 : 0); } }
+        public int minArity { get { return param.Length - defaultVals.Count; } }
         public int length { get { return body.Length; } }
         public Environment closure { get { return scope; } }
+        public Expr defVal(Token t) { return defaultVals[t]; }
         public Dictionary<string, Value> curriedArgs
         {
             get
@@ -682,10 +691,17 @@ namespace Scrippy
             if (this.param.Length != f.param.Length) { return false; }
             if (this.body.Length != f.body.Length) { return false; }
             if (this.boundArgs.Count != f.boundArgs.Count) { return false; }
+            if (this.defaultVals.Count != f.defaultVals.Count) { return false; }
+            if (this.varParam.HasValue != f.varParam.HasValue) { return false; }
 
             FuncValue normalThis = normalize();
             FuncValue normalOther = f.normalize();
-            for (int i = 0; i < normalThis.param.Length; i++) { if (normalThis.param[i].source != normalOther.param[i].source) { return false; } }
+            for (int i = 0; i < normalThis.param.Length; i++) 
+            { 
+                if (normalThis.param[i].source != normalOther.param[i].source) { return false; } 
+                if (normalThis.defVals.ContainsKey(normalThis.param[i]) != normalOther.defVals.ContainsKey(normalOther.param[i])) { return false; }
+                if (normalThis.defVals.ContainsKey(normalThis.param[i]) && !normalThis.defVals[normalThis.param[i]].Equals(normalOther.defVals[normalOther.param[i]])) { return false; }
+            }
             foreach (KeyValuePair<string, Value> kvp in normalThis.boundArgs)
             {
                 if (!normalOther.boundArgs.TryGetValue(kvp.Key, out Value v)) { return false; }
@@ -700,10 +716,13 @@ namespace Scrippy
             Stmt[] newBody = new Stmt[body.Length];
             Token[] newParam = new Token[param.Length];
             Dictionary<string, Value> newBoundArgs = new Dictionary<string, Value>();
+            Dictionary<Token, Expr> newDefaultVals = new Dictionary<Token, Expr>();
+            Token? newVarParam = varParam.HasValue ? varParam : null;
             for (int i = 0; i < body.Length; i++) { newBody[i] = body[i]; }
             for (int i = 0; i < param.Length; i++) { newParam[i] = param[i]; }
             foreach (KeyValuePair<string, Value> kvp in boundArgs) { newBoundArgs[kvp.Key] = kvp.Value.clone(); }
-            return new FuncValue(newParam, newBody, scope, newBoundArgs);
+            foreach (KeyValuePair<Token, Expr> kvp in defaultVals) { newDefaultVals[kvp.Key] = kvp.Value; }
+            return new FuncValue(newParam, newBody, scope, newBoundArgs, newDefaultVals, newVarParam);
         }
         public override bool isTruthy() { return body.Length > 0; }
         public override bool isHashable() { return true; }
@@ -829,16 +848,26 @@ namespace Scrippy
                         newNames.Peek()[f.name.source] = $"funcDecl^{nameNum}";
                         newNames.Push(new Dictionary<string, string>());
                         List<Token> fNames = new List<Token>();
+                        Dictionary<Token, Expr> fNameDefaults = new Dictionary<Token, Expr>();
                         foreach (Token t in f.param)
                         {
                             nameNum++;
                             newNames.Peek()[t.source] = $"funcDeclParam^{nameNum}";
                             fNames.Add(new Token(t.type, lookUp(t.source), t.literal, t.lineStart));
+                            if (f.defValues.ContainsKey(t)) { fNameDefaults.Add(new Token(t.type, lookUp(t.source), t.literal, t.lineStart), normalizeExpr(f.defValues[t])); }
+                        }
+                        Token? fvariadic = null;
+                        if (f.variadic != null) 
+                        {
+                            Token fvar = (Token) f.variadic;
+                            newNames.Peek()[fvar.source] = $"funcDeclVariadic^{nameNum}";
+                            nameNum++;
+                            fvariadic = new Token(fvar.type, lookUp(fvar.source), fvar.literal, fvar.lineStart); 
                         }
                         List<Stmt> fStmts = new List<Stmt>();
                         foreach (Stmt s3 in f.body) { fStmts.Add(normalizeStmt(s3)); }
                         newNames.Pop();
-                        return new FuncDeclStmt(new Token(f.name.type, lookUp(f.name.source), f.name.literal, f.name.lineStart), fNames.ToArray(), fStmts.ToArray(), f.lineStart, f.lineEnd);
+                        return new FuncDeclStmt(new Token(f.name.type, lookUp(f.name.source), f.name.literal, f.name.lineStart), fNames.ToArray(), fStmts.ToArray(), fNameDefaults, fvariadic, f.lineStart, f.lineEnd);
                     case JumpStmt j: return new JumpStmt(j.keyword, normalizeExpr(j.value), j.lineStart, j.lineEnd);
                 }
                 return null;
@@ -850,7 +879,12 @@ namespace Scrippy
             Dictionary<string, Value> newBoundArgs = new Dictionary<string, Value>();
             foreach (KeyValuePair<string, Value> kvp in boundArgs) { newBoundArgs.Add(lookUp(kvp.Key), kvp.Value); }
 
-            return new FuncValue(newParams.ToArray(), newBody.ToArray(), closure, newBoundArgs);
+            Dictionary<Token, Expr> newDefaultVals = new Dictionary<Token, Expr>();
+            foreach (KeyValuePair<Token, Expr> kvp in defaultVals) { newDefaultVals.Add(new Token(kvp.Key.type, lookUp(kvp.Key.source), kvp.Key.literal, kvp.Key.lineStart), normalizeExpr(kvp.Value)); }
+
+            Token? newVarParam = varParam.HasValue ? (Token?) new Token(varParam.Value.type, lookUp(varParam.Value.source), varParam.Value.literal, varParam.Value.lineStart) : null;
+
+            return new FuncValue(newParams.ToArray(), newBody.ToArray(), closure, newBoundArgs, newDefaultVals, newVarParam);
         }
     }
 

@@ -243,18 +243,27 @@ namespace Scrippy
         public Token name { get; }
         public Token[] param { get; }
         public Stmt[] body { get; }
+        public Dictionary<Token, Expr> defValues { get; } //default values for parameters
+        public Token? variadic { get; }
 
-        public FuncDeclStmt(Token name, Token[] param, Stmt[] body, int lineStart, int lineEnd) : base(lineStart, lineEnd)
+        public FuncDeclStmt(Token name, Token[] param, Stmt[] body, Dictionary<Token, Expr> defValues, Token? variadic, int lineStart, int lineEnd) : base(lineStart, lineEnd)
         {
             this.name = name;
             this.param = param;
             this.body = body;
+            this.defValues = defValues;
+            this.variadic = variadic;
         }
         public override bool Equals(Stmt other)
         {
             if (!(other is FuncDeclStmt f)) { return false; }
             if (name.source != f.name.source || param.Length != f.param.Length || body.Length != f.body.Length) { return false; }
-            for (int i = 0; i < param.Length; i++) { if (param[i].source != f.param[i].source) { return false; } }
+            for (int i = 0; i < param.Length; i++) 
+            { 
+                if (param[i].source != f.param[i].source) { return false; } 
+                if (defValues.ContainsKey(param[i]) != f.defValues.ContainsKey(f.param[i])) { return false; }
+                if (defValues.ContainsKey(param[i]) && !defValues[param[i]].Equals(f.defValues[f.param[i]])) { return false; }
+            }
             for (int i = 0; i < body.Length; i++) { if (!body[i].Equals(f.body[i])) { return false; } }
             return true;
         }

@@ -57,14 +57,16 @@ namespace Scrippy
                 case '(': return token(TokenType.LParen);
                 case ')': return token(TokenType.RParen);
                 case '$': return token(TokenType.Trunc);
-                case '~': return token(TokenType.Rest);
-                case '.': return token(TokenType.Access);
+                case '~': return token(TokenType.Range);
                 case ' ': return null;
                 case '\r': return null;
                 case '\t': return null;
                 case '\n': line++; return null;
 
                 //2 character tokens
+                case '.':
+                    if (match('.')) { return token(TokenType.Rest); }
+                    else { return token(TokenType.Access); }
                 case '-':
                     if (match('-')) { return token(TokenType.Decrement); }
                     else if (match('=')) { return token(TokenType.MinusAssign); }

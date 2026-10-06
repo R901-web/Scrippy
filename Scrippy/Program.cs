@@ -28,7 +28,7 @@ namespace Scrippy
             else { Console.Write("Provide only 1 source file"); return; }
 
             //check if file valid
-            if (!filename.EndsWith(".sp") && !filename.EndsWith(".scrippy")) { Console.WriteLine($"File {filename} is not a Scrippy source file (.sp)"); return; }
+            if (!filename.EndsWith(".sp")) { Console.WriteLine($"File {filename} is not a Scrippy source file (.sp)"); return; }
             if (!File.Exists(filename)) { Console.WriteLine($"File {filename} does not exist"); return; }
 #endif
 
@@ -42,15 +42,17 @@ namespace Scrippy
                 DiagnosticHandler.reportAll();
                 return;
             }
+#if DEBUG
             foreach (Token t in tokens) { Console.WriteLine(DebugTools.stringify(t)); }
+#endif
             if (DiagnosticHandler.hadWarning) { DiagnosticHandler.reportAll(); DiagnosticHandler.clear(); }
-
-            Console.WriteLine();
 
             Parser p = new Parser(tokens);
             Stmt[] program = p.parseTokens();
 
+#if DEBUG
             foreach (Stmt s in program) { Console.WriteLine(DebugTools.stringify(s)); }
+#endif
 
             if (DiagnosticHandler.hadError)
             {
@@ -58,8 +60,6 @@ namespace Scrippy
                 return;
             }
             if (DiagnosticHandler.hadWarning) { DiagnosticHandler.reportAll(); DiagnosticHandler.clear(); }
-
-            Console.WriteLine();
 
             Resolver r = new Resolver(program);
             Dictionary<Token, int> depthMap = r.resolveAST();

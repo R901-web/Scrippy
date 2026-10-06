@@ -44,7 +44,8 @@ namespace Scrippy
         Match, NotMatch,
 
         //Other
-        Rest, In, //~ and |> e.g. if (x |> [1, 2, 3]) {}
+        Rest, In, //.. and |> e.g. if (x |> [1, 2, 3]) {}
+        Range, 
         Elvis, NullCoalesce, //?: and ??
         Access, NullAccess, //. and ?.
         TernCond, Colon, //? in ternary, : for step or else
@@ -115,9 +116,11 @@ namespace Scrippy
         //for tokens without literal value
         public Token(TokenType type, string source, int lineStart) : this(type, source, null, lineStart) { }
 
+#if DEBUG
         public override string ToString()
         {
             return DebugTools.stringify(this);
         }
+#endif
     }
 }

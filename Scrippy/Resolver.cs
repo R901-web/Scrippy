@@ -135,7 +135,16 @@ namespace Scrippy
             scopes.Push(new Dictionary<string, (bool, bool)>());
             foreach (Token t in stmt.param)
             {
-                try { declare(t, false); define(t, false); }
+                try 
+                { 
+                    declare(t, false); define(t, false); 
+                    if (stmt.defValues.TryGetValue(t, out Expr def)) { resolve(def); }
+                }
+                catch (Exception e) { error(stmt, e.Message); }
+            }
+            if (stmt.variadic != null)
+            {
+                try { declare((Token) stmt.variadic, false); define((Token) stmt.variadic, false); }
                 catch (Exception e) { error(stmt, e.Message); }
             }
             funcDepth++;
