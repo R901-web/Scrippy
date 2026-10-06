@@ -248,8 +248,9 @@ namespace Scrippy
         {
             Value value = evaluate(stmt.initializer);
             if (!(value is ArrValue v)) { throw error(stmt.initializer, $"Unsupported type for array destructuring: {value.getTypeName()}"); }
-            for (int i = 0; i < v.length; i++)
+            for (int i = 0; i < stmt.names.Length; i++) //all non-variadic
             {
+                if (i >= v.length) { throw error(stmt, $"Array destructuring has more variables than values, expected {stmt.names.Length} but got {v.length}"); }
                 try
                 {
                     if (stmt.names[i].type == TokenType.Underscore) { continue; }
@@ -258,6 +259,13 @@ namespace Scrippy
                 }
                 catch (Exception e) { throw error(stmt, e.Message); }
             }
+            if (stmt.variadic == null) { return; }
+
+            //variadic
+            List<Value> varValues = new List<Value>();
+            for (int i = stmt.names.Length; i < v.length; i++) { varValues.Add(v[i]); }
+            if (stmt.isConst) { environment.defineConst(stmt.variadic.Value.source, new ArrValue(varValues)); }
+            else { environment.define(stmt.variadic.Value.source, new ArrValue(varValues)); }
         }
 
         private void executeDictDestr(DictDestrStmt stmt)

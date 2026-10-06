@@ -94,12 +94,14 @@ namespace Scrippy
     public class ArrDestrStmt : Stmt
     {
         public Token[] names { get; }
+        public Token? variadic { get; }
         public Expr initializer { get; }
         public bool isConst { get; }
 
-        public ArrDestrStmt(Token[] names, Expr initializer, bool isConst, int lineStart, int lineEnd) : base(lineStart, lineEnd)
+        public ArrDestrStmt(Token[] names, Token? variadic, Expr initializer, bool isConst, int lineStart, int lineEnd) : base(lineStart, lineEnd)
         {
             this.names = names;
+            this.variadic = variadic;
             this.isConst = isConst;
             this.initializer = initializer;
         }
@@ -107,7 +109,9 @@ namespace Scrippy
         {
             if (!(other is ArrDestrStmt a)) { return false; }
             if (names.Length != a.names.Length || isConst != a.isConst) { return false; }
+            if (variadic.HasValue != a.variadic.HasValue) { return false; }
             for (int i = 0; i < names.Length; i++) { if (names[i].source != a.names[i].source) { return false; } }
+            if (variadic.HasValue && variadic.Value.source != a.variadic.Value.source) { return false; }
             return initializer.Equals(a.initializer);
         }
         public override int GetHashCode()

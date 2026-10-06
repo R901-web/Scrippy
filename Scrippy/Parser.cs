@@ -122,6 +122,7 @@ namespace Scrippy
         private Stmt parseArrDestr(int lineStart, bool isConst) //var [a, b, c] = ...
         {
             List<Token> names = new List<Token>();
+            Token? variadic = null;
             Expr first = parseTernary();
             if (!(first is VarExpr v)) { throw error(prev(), "Identifier or discard expected in variable declaration"); }
             names.Add(v.name);
@@ -134,12 +135,17 @@ namespace Scrippy
                 if (!(next is VarExpr v2)) { throw error(prev(), "Identifier or discard expected in variable declaration"); }
                 names.Add(v2.name);
             }
+            if (match(TokenType.Rest)) 
+            {
+                variadic = names[names.Count - 1];
+                names.RemoveAt(names.Count - 1);
+            }
             if (!match(TokenType.RSqBrac)) { throw error(peek(), "Missing right square bracket ']' in variable destructuring"); }
             if (!match(TokenType.Assign)) { throw error(peek(), "Missing initializer in variable destructuring"); }
 
             Expr initializer = parseExpr();
             if (!match(TokenType.Semicolon)) { throw error(peek(), "Missing ';' at end of statement"); }
-            return new ArrDestrStmt(names.ToArray(), initializer, isConst, lineStart, prev().lineEnd);
+            return new ArrDestrStmt(names.ToArray(), variadic, initializer, isConst, lineStart, prev().lineEnd);
         }
 
         private Stmt parseDictDestr(int lineStart, bool isConst, Token first) //var [a: a1, b: b1, c: c1] = ...

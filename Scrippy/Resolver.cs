@@ -71,10 +71,18 @@ namespace Scrippy
 
         private void resolveArrDestr(ArrDestrStmt stmt)
         {
-            try { foreach (Token t in stmt.names) { declare(t, stmt.isConst); } }
+            try 
+            { 
+                foreach (Token t in stmt.names) { declare(t, stmt.isConst); } 
+                if (stmt.variadic != null) { declare(stmt.variadic.Value, stmt.isConst); }
+            }
             catch (Exception e) { error(stmt, e.Message); }
             resolve(stmt.initializer);
-            try { foreach (Token t in stmt.names) { define(t, stmt.isConst); } }
+            try 
+            { 
+                foreach (Token t in stmt.names) { define(t, stmt.isConst); }
+                if (stmt.variadic != null) { define(stmt.variadic.Value, stmt.isConst); }
+            }
             catch (Exception e) { error(stmt, e.Message); }
         }
 

@@ -817,6 +817,7 @@ namespace Scrippy
                         return new VarDeclStmt(vNames.ToArray(), init, v.isConst, v.lineStart, v.lineEnd);
                     case ArrDestrStmt a:
                         List<Token> aNames = new List<Token>();
+                        Token? variadic = null;
                         Expr init2 = normalizeExpr(a.initializer);
                         foreach (Token t in a.names)
                         {
@@ -824,7 +825,14 @@ namespace Scrippy
                             newNames.Peek()[t.source] = $"arrDestr^{nameNum}";
                             aNames.Add(new Token(t.type, lookUp(t.source), t.literal, t.lineStart));
                         }
-                        return new ArrDestrStmt(aNames.ToArray(), init2, a.isConst, a.lineStart, a.lineEnd);
+                        if (a.variadic.HasValue)
+                        {
+                            Token v = (Token) a.variadic;
+                            newNames.Peek()[v.source] = $"arrDestrVariadic^{nameNum}";
+                            nameNum++;
+                            variadic = new Token(v.type, lookUp(v.source), v.literal, v.lineStart);
+                        }
+                        return new ArrDestrStmt(aNames.ToArray(), variadic, init2, a.isConst, a.lineStart, a.lineEnd);
                     case DictDestrStmt d:
                         Dictionary<Token, Expr> dNames = new Dictionary<Token, Expr>();
                         Expr init3 = normalizeExpr(d.initializer);
